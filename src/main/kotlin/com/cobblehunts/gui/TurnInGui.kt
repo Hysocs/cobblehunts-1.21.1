@@ -1,0 +1,336 @@
+package com.cobblehunts.gui
+
+import com.cobblehunts.CobbleHunts
+import com.cobblehunts.HuntInstance
+import com.cobblehunts.gui.PlayerHuntsGui
+import com.cobblehunts.utils.*
+import com.cobblemon.mod.common.Cobblemon
+import com.cobblemon.mod.common.api.pokemon.stats.Stats
+import com.cobblemon.mod.common.item.PokemonItem
+import com.cobblemon.mod.common.pokemon.Pokemon
+import com.everlastingutils.gui.CustomGui
+import com.everlastingutils.gui.InteractionContext
+import com.everlastingutils.gui.setCustomName
+import net.minecraft.item.ItemStack
+import net.minecraft.item.Items
+import net.minecraft.server.network.ServerPlayerEntity
+import net.minecraft.text.Text
+import net.minecraft.util.Formatting
+import com.mojang.serialization.JsonOps
+import net.minecraft.registry.RegistryOps
+import kotlin.random.Random
+
+object TurnInGui {
+    private val partySlots = listOf(1, 10, 19, 28, 37, 46)
+    private val turnInButtonSlots = listOf(2, 11, 20, 29, 38, 47)
+    private val turnInSlots = listOf(7, 16, 25, 34, 43, 52)
+    private val cancelButtonSlots = listOf(6, 15, 24, 33, 42, 51)
+
+    private object Textures {
+        const val TURN_IN = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOTYzMzlmZjJlNTM0MmJhMThiZGM0OGE5OWNjYTY1ZDEyM2NlNzgxZDg3ODI3MmY5ZDk2NGVhZDNiOGFkMzcwIn19fQ=="
+        const val CANCEL = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYmViNTg4YjIxYTZmOThhZDFmZjRlMDg1YzU1MmRjYjA1MGVmYzljYWI0MjdmNDYwNDhmMThmYzgwMzQ3NWY3In19fQ=="
+        const val CONFIRM = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYTc5YTVjOTVlZTE3YWJmZWY0NWM4ZGMyMjQxODk5NjQ5NDRkNTYwZjE5YTQ0ZjE5ZjhhNDZhZWYzZmVlNDc1NiJ9fX0="
+        const val NOT_TARGET = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvODlhOTk1OTI4MDkwZDg0MmQ0YWZkYjIyOTZmZmUyNGYyZTk0NDI3MjIwNWNlYmE4NDhlZTQwNDZlMDFmMzE2OCJ9fX0="
+        const val BACK = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzI0MzE5MTFmNDE3OGI0ZDJiNDEzYWE3ZjVjNzhhZTQ0NDdmZTkyNDY5NDNjMzFkZjMxMTYzYzBlMDQzZTBkNiJ9fX0="
+    }
+
+    fun openTurnInGui(player: ServerPlayerEntity, rarity: String) {
+        val selectedForTurnIn = mutableListOf<Pokemon?>(null, null, null, null, null, null)
+        CustomGui.openGui(
+            player,
+            "Turn In $rarity Hunt",
+            generateTurnInLayout(player, selectedForTurnIn, rarity),
+            { context -> handleTurnInInteraction(context, player, selectedForTurnIn, rarity) },
+            { /* Cleanup can be added here if needed */ }
+        )
+    }
+
+    private fun generateTurnInLayout(player: ServerPlayerEntity, selectedForTurnIn: MutableList<Pokemon?>, rarity: String): List<ItemStack> {
+        val layout = MutableList(54) { createFillerPane() }
+
+        val party = CobbleHunts.getPlayerParty(player)
+        partySlots.forEachIndexed { index, slot ->
+            val pokemon = party.getOrNull(index)
+            if (pokemon != null) {
+                if (selectedForTurnIn[index] == null) {
+                    layout[slot] = createPokemonItem(pokemon)
+                } else {
+                    layout[slot] = ItemStack(Items.RED_STAINED_GLASS_PANE).apply {
+                        setCustomName(Text.literal("Selected").styled { it.withColor(Formatting.RED) })
+                    }
+                }
+            } else {
+                layout[slot] = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE).apply {
+                    setCustomName(Text.literal(" "))
+                }
+            }
+        }
+
+        val activeHunt = CobbleHunts.getPlayerData(player).activePokemon[rarity]
+
+        turnInButtonSlots.forEachIndexed { index, slot ->
+            val pokemon = party.getOrNull(index)
+            val isSelected = selectedForTurnIn[index] != null
+            if (pokemon != null && !isSelected && activeHunt != null) {
+                if (isMatchingPokemon(pokemon, activeHunt)) {
+                    layout[slot] = CustomGui.createPlayerHeadButton(
+                        textureName = "TurnIn",
+                        title = Text.literal("Turn In").styled { it.withColor(Formatting.YELLOW) },
+                        lore = listOf(
+                            Text.literal("Click to select for turn-in").styled { it.withColor(Formatting.GRAY) }
+                        ),
+                        textureValue = Textures.TURN_IN
+                    )
+                } else {
+                    layout[slot] = CustomGui.createPlayerHeadButton(
+                        textureName = "NotTarget",
+                        title = Text.literal("Not the Target Pokémon").styled { it.withColor(Formatting.RED) },
+                        lore = listOf(
+                            Text.literal("This is not the required Pokémon").styled { it.withColor(Formatting.GRAY) }
+                        ),
+                        textureValue = Textures.NOT_TARGET
+                    )
+                }
+            } else {
+                layout[slot] = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE).apply {
+                    setCustomName(Text.literal(" "))
+                }
+            }
+        }
+
+        turnInSlots.forEachIndexed { index, slot ->
+            val selectedPokemon = selectedForTurnIn[index]
+            if (selectedPokemon != null) {
+                layout[slot] = createPokemonItem(selectedPokemon)
+            } else {
+                layout[slot] = ItemStack(Items.RED_STAINED_GLASS_PANE).apply {
+                    setCustomName(Text.literal(" "))
+                }
+            }
+        }
+
+        cancelButtonSlots.forEachIndexed { index, slot ->
+            if (selectedForTurnIn[index] != null) {
+                layout[slot] = CustomGui.createPlayerHeadButton(
+                    textureName = "Cancel",
+                    title = Text.literal("Cancel Turn In").styled { it.withColor(Formatting.RED) },
+                    lore = listOf(
+                        Text.literal("Click to move back to party").styled { it.withColor(Formatting.GRAY) }
+                    ),
+                    textureValue = Textures.CANCEL
+                )
+            } else {
+                layout[slot] = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE).apply {
+                    setCustomName(Text.literal(" "))
+                }
+            }
+        }
+
+        if (selectedForTurnIn.count { it != null } == 1) {
+            layout[22] = CustomGui.createPlayerHeadButton(
+                textureName = "Accept",
+                title = Text.literal("Accept Turn In").styled { it.withColor(Formatting.GREEN) },
+                lore = listOf(
+                    Text.literal("Click to accept selection").styled { it.withColor(Formatting.GRAY) }
+                ),
+                textureValue = Textures.CONFIRM
+            )
+        } else {
+            layout[22] = createFillerPane()
+        }
+
+        layout[49] = CustomGui.createPlayerHeadButton(
+            textureName = "Back",
+            title = Text.literal("Back").styled { it.withColor(Formatting.YELLOW) },
+            lore = listOf(
+                Text.literal("Return to previous menu").styled { it.withColor(Formatting.GRAY) }
+            ),
+            textureValue = Textures.BACK
+        )
+
+        return layout
+    }
+
+    private fun handleTurnInInteraction(context: InteractionContext, player: ServerPlayerEntity, selectedForTurnIn: MutableList<Pokemon?>, rarity: String) {
+        val slot = context.slotIndex
+        if (slot in turnInButtonSlots) {
+            val index = turnInButtonSlots.indexOf(slot)
+            val party = CobbleHunts.getPlayerParty(player)
+            val pokemon = party.getOrNull(index)
+            val activeHunt = CobbleHunts.getPlayerData(player).activePokemon[rarity]
+            if (pokemon != null && selectedForTurnIn[index] == null && activeHunt != null) {
+                if (isMatchingPokemon(pokemon, activeHunt)) {
+                    selectedForTurnIn[index] = pokemon
+                    player.server.execute {
+                        CustomGui.refreshGui(player, generateTurnInLayout(player, selectedForTurnIn, rarity))
+                    }
+                } else {
+                    player.sendMessage(Text.literal("This is not the required Pokémon for the hunt.").styled { it.withColor(Formatting.RED) }, false)
+                }
+            }
+        } else if (slot in cancelButtonSlots) {
+            val index = cancelButtonSlots.indexOf(slot)
+            if (selectedForTurnIn[index] != null) {
+                selectedForTurnIn[index] = null
+                player.server.execute {
+                    CustomGui.refreshGui(player, generateTurnInLayout(player, selectedForTurnIn, rarity))
+                }
+            }
+        } else if (slot == 22) {
+            if (selectedForTurnIn.count { it != null } == 1) {
+                val selectedPokemon = selectedForTurnIn.first { it != null }
+                val party = Cobblemon.storage.getParty(player)
+                if (selectedPokemon != null) {
+                    println("Removing Pokémon from party: ${selectedPokemon.species.name}")
+                    party.remove(selectedPokemon)
+                }
+
+                val data = CobbleHunts.getPlayerData(player)
+                val activeHunt = data.activePokemon[rarity]
+                if (activeHunt != null && (activeHunt.endTime == null || System.currentTimeMillis() < activeHunt.endTime!!)) {
+                    // Award leaderboard points first
+                    val points = when (rarity) {
+                        "easy" -> HuntsConfig.config.soloEasyPoints
+                        "medium" -> HuntsConfig.config.soloMediumPoints
+                        "hard" -> HuntsConfig.config.soloHardPoints
+                        else -> 0
+                    }
+                    if (points > 0) {
+                        println("Awarding $points points to ${player.name.string}")
+                        LeaderboardManager.addPoints(player.name.string, points)
+                        player.sendMessage(
+                            Text.literal("You earned $points Leaderboard points!").styled { it.withColor(Formatting.GOLD) },
+                            false
+                        )
+                    }
+
+                    // Select reward from loot pool based on rarity
+                    val lootPool = when (rarity) {
+                        "easy" -> HuntsConfig.config.soloEasyLoot
+                        "medium" -> HuntsConfig.config.soloMediumLoot
+                        "hard" -> HuntsConfig.config.soloHardLoot
+                        else -> emptyList()
+                    }
+                    println("Loot pool size for $rarity: ${lootPool.size}")
+                    val reward = selectRewardFromLootPool(lootPool)
+                    if (reward != null) {
+                        println("Selected reward type: ${reward.javaClass.simpleName}")
+                        when (reward) {
+                            is ItemReward -> {
+                                val ops = RegistryOps.of(JsonOps.INSTANCE, player.server.registryManager)
+                                val itemStack = reward.serializableItemStack.toItemStack(ops)
+                                println("Giving item: ${itemStack.item.name.string}")
+                                player.inventory.offerOrDrop(itemStack)
+                                player.sendMessage(
+                                    Text.literal("You received ${itemStack.name.string}!").styled { it.withColor(Formatting.GREEN) },
+                                    false
+                                )
+                            }
+                            is CommandReward -> {
+                                val commandToExecute = reward.command.replace("%player%", player.name.string)
+                                println("Original command: ${reward.command}")
+                                println("Executing command: $commandToExecute")
+                                try {
+                                    player.server.commandManager.executeWithPrefix(player.server.commandSource, commandToExecute)
+                                    println("Command executed successfully: $commandToExecute")
+                                    player.sendMessage(
+                                        Text.literal("Hunt completed! Check your inventory for rewards.").styled { it.withColor(Formatting.GREEN) },
+                                        false
+                                    )
+                                } catch (e: Exception) {
+                                    println("Command execution failed for: $commandToExecute with error: ${e.message}")
+                                    player.sendMessage(
+                                        Text.literal("Failed to execute reward command: ${e.message}").styled { it.withColor(Formatting.RED) },
+                                        false
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        println("No reward selected from loot pool for $rarity")
+                        player.sendMessage(
+                            Text.literal("Hunt completed, but no reward was available.").styled { it.withColor(Formatting.YELLOW) },
+                            false
+                        )
+                    }
+
+                    // Complete the hunt
+                    println("Completing hunt for rarity: $rarity")
+                    data.activePokemon.remove(rarity)
+                    val cooldownTime = when (rarity) {
+                        "easy" -> HuntsConfig.config.soloEasyCooldown
+                        "medium" -> HuntsConfig.config.soloMediumCooldown
+                        "hard" -> HuntsConfig.config.soloHardCooldown
+                        else -> 0
+                    }
+                    if (cooldownTime > 0) {
+                        data.cooldowns[rarity] = System.currentTimeMillis() + (cooldownTime * 1000L)
+                        println("Set cooldown for $rarity to ${cooldownTime}s")
+                    }
+
+                    player.closeHandledScreen()
+                } else {
+                    println("Hunt expired or inactive for rarity: $rarity")
+                    player.sendMessage(
+                        Text.literal("The hunt has expired or is no longer active.").styled { it.withColor(Formatting.RED) },
+                        false
+                    )
+                    player.closeHandledScreen()
+                }
+            }
+        } else if (slot == 49) {
+            player.server.execute {
+                PlayerHuntsGui.openSoloHuntsGui(player)
+            }
+        }
+    }
+
+    private fun selectRewardFromLootPool(lootPool: List<LootReward>): LootReward? {
+        if (lootPool.isEmpty()) return null
+        val totalChance = lootPool.sumOf { it.chance }
+        val randomValue = Random.nextDouble() * totalChance
+        var cumulativeChance = 0.0
+        for (reward in lootPool) {
+            cumulativeChance += reward.chance
+            if (randomValue <= cumulativeChance) {
+                return reward
+            }
+        }
+        return lootPool.last() // Fallback to last item if rounding errors occur
+    }
+
+    private fun isMatchingPokemon(selectedPokemon: Pokemon, activeHunt: HuntInstance): Boolean {
+        val requiredEntry = activeHunt.entry
+        if (!selectedPokemon.species.name.equals(requiredEntry.species, ignoreCase = true)) return false
+        if (requiredEntry.form != null && !selectedPokemon.form.name.equals(requiredEntry.form, ignoreCase = true)) return false
+        if (!selectedPokemon.aspects.containsAll(requiredEntry.aspects)) return false
+        if (activeHunt.requiredGender != null && !selectedPokemon.gender.name.equals(activeHunt.requiredGender, ignoreCase = true)) return false
+        if (activeHunt.requiredIVs.isNotEmpty()) {
+            for (iv in activeHunt.requiredIVs) {
+                val stat = when (iv.lowercase()) {
+                    "hp" -> Stats.HP
+                    "attack" -> Stats.ATTACK
+                    "defense" -> Stats.DEFENCE
+                    "special_attack" -> Stats.SPECIAL_ATTACK
+                    "special_defense" -> Stats.SPECIAL_DEFENCE
+                    "speed" -> Stats.SPEED
+                    else -> continue
+                }
+                val ivValue = selectedPokemon.ivs[stat] ?: return false
+                if (ivValue < 20) return false
+            }
+        }
+        return true
+    }
+
+    private fun createPokemonItem(pokemon: Pokemon): ItemStack {
+        val item = PokemonItem.from(pokemon)
+        val displayName = pokemon.species.name.replaceFirstChar { it.titlecase() }
+        item.setCustomName(Text.literal(displayName).styled { it.withColor(Formatting.WHITE) })
+        return item
+    }
+
+    private fun createFillerPane(): ItemStack {
+        return ItemStack(Items.GRAY_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
+    }
+}

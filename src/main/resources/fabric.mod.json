@@ -1,0 +1,53 @@
+{
+	"schemaVersion": 1,
+	"id": "cobblehunts",
+	"version": "${version}",
+	"name": "CobbleHunts",
+	"description": "This is an simple hunts cobblemon addon",
+	"authors": [
+		"Hysocs"
+	],
+	"contact": {
+		"discord": "https://discord.gg/KQyPEye7CT"
+	},
+	"license": "GNU Lesser General Public License v3",
+	"icon": "assets/cobblehunts/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			{
+				"value": "com.cobblehunts.CobbleHunts",
+				"adapter": "kotlin"
+			}
+		],
+		"client": [
+			{
+				"value": "com.cobblehunts.CobbleHuntsClient",
+				"adapter": "kotlin"
+			}
+		],
+		"fabric-datagen": [
+			{
+				"value": "com.cobblehunts.CobbleHuntsDataGenerator",
+				"adapter": "kotlin"
+			}
+		]
+	},
+	"mixins": [
+		"cobblehunts.mixins.json",
+		{
+			"config": "cobblehunts.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.16.10",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*",
+		"fabric-language-kotlin": "*"
+	},
+	"suggests": {
+		"another-mod": "*"
+	}
+}
