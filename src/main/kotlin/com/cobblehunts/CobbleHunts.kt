@@ -9,18 +9,21 @@ import com.cobblemon.mod.common.Cobblemon
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties
 import com.cobblemon.mod.common.pokemon.Pokemon
 import com.everlastingutils.command.CommandManager
+import com.everlastingutils.scheduling.SchedulerManager
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.text.Text
 import org.slf4j.LoggerFactory
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 
 object CobbleHunts : ModInitializer {
 	private val logger = LoggerFactory.getLogger("cobblehunts")
 	private val cmdManager = CommandManager("hunts", defaultPermissionLevel = 2, defaultOpLevel = 2)
 	private val playerData = mutableMapOf<UUID, PlayerHuntData>()
+	private var guiRefreshScheduled = false
 
 	data class GlobalHuntState(
 		val instance: HuntInstance,
@@ -28,14 +31,23 @@ object CobbleHunts : ModInitializer {
 	)
 
 	var globalHuntState: GlobalHuntState? = null
-	private var globalCooldownEnd: Long = 0
+	var globalCooldownEnd: Long = 0
 	private var lastCheckTime: Long = System.currentTimeMillis()
 
 	override fun onInitialize() {
 		HuntsConfig.initializeAndLoad()
 		registerCommands()
 		startGlobalHunt()
-		ServerTickEvents.END_SERVER_TICK.register { _ -> onServerTick() }
+		ServerTickEvents.END_SERVER_TICK.register { server ->
+			onServerTick()
+			// Start the GUI refresh scheduler (only once) so that every second it calls our refresh method
+			if (!guiRefreshScheduled) {
+				SchedulerManager.scheduleAtFixedRate("cobblehunts-gui-refresh", server, 0, 1, TimeUnit.SECONDS) {
+					PlayerHuntsGui.refreshDynamicGuis()
+				}
+				guiRefreshScheduled = true
+			}
+		}
 		logger.info("CobbleHunts initialized")
 	}
 

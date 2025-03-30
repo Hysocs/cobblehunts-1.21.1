@@ -39,7 +39,46 @@ object PlayerHuntsGui {
         const val INFO = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZTcxYTIyODVjOTFjNmM3Mjc0NzYwNDgxOWVlNTIyM2E5MGFhNTFlNmU3OWU0ZjlhZjY2MjhlYzhmMGRkN2RmYyJ9fX0="
     }
 
+    private val dynamicGuiData = mutableMapOf<ServerPlayerEntity, Pair<String, MutableList<ItemStack>>>()
+
+    fun refreshDynamicGuis() {
+        dynamicGuiData.forEach { (player, pair) ->
+            val (guiType, staticLayout) = pair
+            val newLayout = staticLayout.toMutableList()
+            when (guiType) {
+                "global" -> {
+                    newLayout[4] = if (CobbleHunts.globalHuntState != null) {
+                        ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
+                    } else {
+                        ItemStack(Items.BLACK_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
+                    }
+                    newLayout[GlobalSlots.POKEMON] = getGlobalDynamicItem()
+                }
+                "solo" -> {
+                    CobbleHunts.refreshPreviewPokemon(player)
+                    val difficulties = listOf("easy", "medium", "hard")
+                    val indicatorSlots = listOf(SoloSlots.INDICATOR_EASY, SoloSlots.INDICATOR_MEDIUM, SoloSlots.INDICATOR_HARD)
+                    val pokemonSlots = listOf(SoloSlots.POKEMON_EASY, SoloSlots.POKEMON_MEDIUM, SoloSlots.POKEMON_HARD)
+                    val data = CobbleHunts.getPlayerData(player)
+                    difficulties.forEachIndexed { index, difficulty ->
+                        val activeInstance = data.activePokemon[difficulty]
+                        val isActive = activeInstance != null && (activeInstance.endTime == null || System.currentTimeMillis() < activeInstance.endTime!!)
+                        newLayout[indicatorSlots[index]] = if (isActive) {
+                            ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
+                        } else {
+                            ItemStack(Items.BLACK_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
+                        }
+                        newLayout[pokemonSlots[index]] = getSoloDynamicItem(player, difficulty)
+                    }
+                }
+            }
+            CustomGui.refreshGui(player, newLayout)
+            dynamicGuiData[player] = Pair(guiType, newLayout)
+        }
+    }
+
     fun openMainGui(player: ServerPlayerEntity) {
+        dynamicGuiData.remove(player)
         CustomGui.openGui(
             player,
             "Hunts Menu",
@@ -55,25 +94,19 @@ object PlayerHuntsGui {
         layout[MainSlots.GLOBAL] = CustomGui.createPlayerHeadButton(
             textureName = "GlobalHunts",
             title = Text.literal("Global Hunts").styled { it.withColor(Formatting.GREEN) },
-            lore = listOf(
-                Text.literal("Click to view global hunts").styled { it.withColor(Formatting.YELLOW) }
-            ),
+            lore = listOf(Text.literal("Click to view global hunts").styled { it.withColor(Formatting.YELLOW) }),
             textureValue = MainTextures.GLOBAL
         )
         layout[MainSlots.SOLO] = CustomGui.createPlayerHeadButton(
             textureName = "SoloHunts",
             title = Text.literal("Solo Hunts").styled { it.withColor(Formatting.AQUA) },
-            lore = listOf(
-                Text.literal("Click to view solo hunts").styled { it.withColor(Formatting.YELLOW) }
-            ),
+            lore = listOf(Text.literal("Click to view solo hunts").styled { it.withColor(Formatting.YELLOW) }),
             textureValue = MainTextures.SOLO
         )
         layout[MainSlots.LEADERBOARD] = CustomGui.createPlayerHeadButton(
             textureName = "Leaderboard",
             title = Text.literal("Leaderboard").styled { it.withColor(Formatting.GOLD) },
-            lore = listOf(
-                Text.literal("View top players").styled { it.withColor(Formatting.YELLOW) }
-            ),
+            lore = listOf(Text.literal("View top players").styled { it.withColor(Formatting.YELLOW) }),
             textureValue = MainTextures.LEADERBOARD
         )
         return layout
@@ -88,16 +121,13 @@ object PlayerHuntsGui {
     }
 
     private fun openLeaderboardGui(player: ServerPlayerEntity) {
+        dynamicGuiData.remove(player)
         CustomGui.openGui(
             player,
             "Leaderboard",
             generateLeaderboardLayout(player),
             3,
-            { context ->
-                if (context.slotIndex == 22) {
-                    openMainGui(player)
-                }
-            },
+            { context -> if (context.slotIndex == 22) openMainGui(player) },
             { }
         )
     }
@@ -169,27 +199,29 @@ object PlayerHuntsGui {
         const val BACK = MainTextures.BACK
     }
 
-    private fun openGlobalHuntsGui(player: ServerPlayerEntity) {
+    fun openGlobalHuntsGui(player: ServerPlayerEntity) {
+        val layout = generateGlobalLayout()
+        dynamicGuiData[player] = Pair("global", layout.toMutableList())
         CustomGui.openGui(
             player,
             "Global Hunts",
-            generateGlobalLayout(),
+            layout,
             3,
             { context -> handleGlobalInteraction(context, player) },
-            { }
+            { _ -> dynamicGuiData.remove(player) }
         )
     }
 
     private fun generateGlobalLayout(): List<ItemStack> {
         val layout = MutableList(27) { createFillerPane() }
-        val globalInstance = CobbleHunts.globalHuntState?.instance
-        if (globalInstance != null) {
-            layout[GlobalSlots.POKEMON] = createPreviewPokemonItem(globalInstance, "global")
+        // Add indicator slot at position 4
+        layout[4] = if (CobbleHunts.globalHuntState != null) {
+            ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
         } else {
-            layout[GlobalSlots.POKEMON] = ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply {
-                setCustomName(Text.literal("No Global Hunt Active").styled { it.withColor(Formatting.GRAY) })
-            }
+            ItemStack(Items.BLACK_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
         }
+        // Pokémon slot
+        layout[GlobalSlots.POKEMON] = getGlobalDynamicItem()
         layout[GlobalSlots.BACK] = CustomGui.createPlayerHeadButton(
             textureName = "Back",
             title = Text.literal("Back").styled { it.withColor(Formatting.YELLOW) },
@@ -213,6 +245,9 @@ object PlayerHuntsGui {
     }
 
     private object SoloSlots {
+        const val INDICATOR_EASY = 1
+        const val INDICATOR_MEDIUM = 4
+        const val INDICATOR_HARD = 7
         const val POKEMON_EASY = 10
         const val POKEMON_MEDIUM = 13
         const val POKEMON_HARD = 16
@@ -226,51 +261,34 @@ object PlayerHuntsGui {
 
     fun openSoloHuntsGui(player: ServerPlayerEntity) {
         CobbleHunts.refreshPreviewPokemon(player)
+        val layout = generateSoloLayout(player)
+        dynamicGuiData[player] = Pair("solo", layout.toMutableList())
         CustomGui.openGui(
             player,
             "Solo Hunts",
-            generateSoloLayout(player),
+            layout,
             3,
             { context -> handleSoloInteraction(context, player) },
-            { }
+            { _ -> dynamicGuiData.remove(player) }
         )
     }
 
     private fun generateSoloLayout(player: ServerPlayerEntity): List<ItemStack> {
         val layout = MutableList(27) { createFillerPane() }
         val difficulties = listOf("easy", "medium", "hard")
+        val indicatorSlots = listOf(SoloSlots.INDICATOR_EASY, SoloSlots.INDICATOR_MEDIUM, SoloSlots.INDICATOR_HARD)
         val pokemonSlots = listOf(SoloSlots.POKEMON_EASY, SoloSlots.POKEMON_MEDIUM, SoloSlots.POKEMON_HARD)
         val data = CobbleHunts.getPlayerData(player)
 
         difficulties.forEachIndexed { index, difficulty ->
             val activeInstance = data.activePokemon[difficulty]
-            if (activeInstance != null) {
-                if (activeInstance.endTime != null && System.currentTimeMillis() > activeInstance.endTime!!) {
-                    data.activePokemon.remove(difficulty)
-                    val cooldown = when (difficulty) {
-                        "easy" -> HuntsConfig.config.soloEasyCooldown
-                        "medium" -> HuntsConfig.config.soloMediumCooldown
-                        "hard" -> HuntsConfig.config.soloHardCooldown
-                        else -> 0
-                    }
-                    data.cooldowns[difficulty] = System.currentTimeMillis() + (cooldown * 1000L)
-                    player.sendMessage(Text.literal("Time expired for $difficulty hunt!").styled { it.withColor(Formatting.RED) }, false)
-                    layout[pokemonSlots[index]] = createCooldownItem(difficulty)
-                } else {
-                    layout[pokemonSlots[index]] = createActivePokemonItem(activeInstance, difficulty)
-                }
-            } else if (!CobbleHunts.isOnCooldown(player, difficulty)) {
-                val previewInstance = data.previewPokemon[difficulty]
-                if (previewInstance != null) {
-                    layout[pokemonSlots[index]] = createPreviewPokemonItem(previewInstance, difficulty)
-                } else {
-                    layout[pokemonSlots[index]] = ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply {
-                        setCustomName(Text.literal("No Preview Available").styled { it.withColor(Formatting.GRAY) })
-                    }
-                }
+            val isActive = activeInstance != null && (activeInstance.endTime == null || System.currentTimeMillis() < activeInstance.endTime!!)
+            layout[indicatorSlots[index]] = if (isActive) {
+                ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
             } else {
-                layout[pokemonSlots[index]] = createCooldownItem(difficulty)
+                ItemStack(Items.BLACK_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
             }
+            layout[pokemonSlots[index]] = getSoloDynamicItem(player, difficulty)
         }
 
         layout[SoloSlots.BACK] = CustomGui.createPlayerHeadButton(
@@ -303,7 +321,13 @@ object PlayerHuntsGui {
                     if (instance != null) {
                         CobbleHunts.activateMission(player, difficulty, instance)
                         player.sendMessage(Text.literal("Activated $difficulty mission for ${instance.entry.species}!"), false)
-                        openSoloHuntsGui(player)
+                        dynamicGuiData[player]?.let { (guiType, _) ->
+                            if (guiType == "solo") {
+                                val newLayout = generateSoloLayout(player).toMutableList()
+                                dynamicGuiData[player] = Pair("solo", newLayout)
+                                CustomGui.refreshGui(player, newLayout)
+                            }
+                        }
                     }
                 }
             } else {
@@ -311,6 +335,51 @@ object PlayerHuntsGui {
             }
         } else if (context.slotIndex == SoloSlots.BACK) {
             openMainGui(player)
+        }
+    }
+
+    private fun getGlobalDynamicItem(): ItemStack {
+        return if (CobbleHunts.globalHuntState != null) {
+            createActivePokemonItem(CobbleHunts.globalHuntState!!.instance, "global")
+        } else {
+            val remainingCooldown = (CobbleHunts.globalCooldownEnd - System.currentTimeMillis()) / 1000
+            if (remainingCooldown > 0) {
+                val timeString = formatTime(remainingCooldown.toInt())
+                ItemStack(Items.CLOCK).apply {
+                    setCustomName(Text.literal("Next Global Hunt in $timeString").styled { it.withColor(Formatting.YELLOW) })
+                }
+            } else {
+                ItemStack(Items.CLOCK).apply {
+                    setCustomName(Text.literal("Starting soon...").styled { it.withColor(Formatting.YELLOW) })
+                }
+            }
+        }
+    }
+
+    private fun getSoloDynamicItem(player: ServerPlayerEntity, difficulty: String): ItemStack {
+        val data = CobbleHunts.getPlayerData(player)
+        return when {
+            data.activePokemon[difficulty]?.let { instance ->
+                instance.endTime == null || System.currentTimeMillis() < instance.endTime!!
+            } == true -> createActivePokemonItem(data.activePokemon[difficulty]!!, difficulty)
+            !CobbleHunts.isOnCooldown(player, difficulty) -> {
+                val previewInstance = data.previewPokemon[difficulty]
+                if (previewInstance != null) {
+                    createPreviewPokemonItem(previewInstance, difficulty)
+                } else {
+                    ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply {
+                        setCustomName(Text.literal("No Preview Available").styled { it.withColor(Formatting.GRAY) })
+                    }
+                }
+            }
+            else -> {
+                val cooldownEnd = data.cooldowns[difficulty] ?: 0
+                val remainingTime = (cooldownEnd - System.currentTimeMillis()) / 1000
+                val timeString = formatTime(remainingTime.toInt())
+                ItemStack(Items.CLOCK).apply {
+                    setCustomName(Text.literal("Cooldown: $timeString").styled { it.withColor(Formatting.YELLOW) })
+                }
+            }
         }
     }
 
@@ -325,64 +394,37 @@ object PlayerHuntsGui {
         item.setCustomName(Text.literal(displayName).styled { it.withColor(Formatting.WHITE) })
 
         val lore = mutableListOf<Text>()
-        lore.add(Text.literal("Active Hunt").styled { it.withColor(Formatting.AQUA) })
-        lore.add(Text.literal("$difficulty Mission").styled { it.withColor(getRarityColor(difficulty)) })
-        lore.add(Text.literal("Capture this Pokémon to complete the hunt.").styled { it.withColor(Formatting.GRAY) })
-
-        when (difficulty) {
-            "medium" -> {
-                val genderText = instance.requiredGender?.replaceFirstChar { it.titlecase() } ?: "None"
-                lore.add(
-                    Text.literal("Required Gender: ").styled { it.withColor(Formatting.GRAY) }
-                        .append(Text.literal(genderText).styled { it.withColor(Formatting.LIGHT_PURPLE) })
-                )
-            }
-            "hard" -> {
-                val genderText = instance.requiredGender?.replaceFirstChar { it.titlecase() } ?: "None"
-                lore.add(
-                    Text.literal("Required Gender: ").styled { it.withColor(Formatting.GRAY) }
-                        .append(Text.literal(genderText).styled { it.withColor(Formatting.LIGHT_PURPLE) })
-                )
-                val ivsText = if (instance.requiredIVs.isNotEmpty())
-                    instance.requiredIVs.joinToString(", ") { it.replaceFirstChar { char -> char.uppercase() } }
-                else "None"
-                lore.add(
-                    Text.literal("Required IVs above 20: ").styled { it.withColor(Formatting.GRAY) }
-                        .append(Text.literal(ivsText).styled { it.withColor(Formatting.GOLD) })
-                )
-            }
+        lore.add(Text.literal("Required for Turn-In:").styled { it.withColor(Formatting.AQUA) })
+        if (entry.form != null) {
+            lore.add(Text.literal("- Form: ${entry.form.replaceFirstChar { it.titlecase() }}").styled { it.withColor(Formatting.GRAY) })
+        }
+        if (entry.aspects.contains("shiny")) {
+            lore.add(Text.literal("- Shiny").styled { it.withColor(Formatting.GRAY) })
+        }
+        if (instance.requiredGender != null) {
+            val genderText = instance.requiredGender.replaceFirstChar { it.titlecase() }
+            lore.add(Text.literal("- Gender: $genderText").styled { it.withColor(Formatting.LIGHT_PURPLE) })
+        }
+        if (instance.requiredIVs.isNotEmpty()) {
+            val ivsText = instance.requiredIVs.joinToString(", ") { it.replaceFirstChar { it.uppercase() } }
+            lore.add(Text.literal("- IVs above 20: $ivsText").styled { it.withColor(Formatting.GRAY) })
         }
 
-        val timeLimit = when (difficulty) {
-            "easy" -> HuntsConfig.config.soloEasyTimeLimit
-            "medium" -> HuntsConfig.config.soloMediumTimeLimit
-            "hard" -> HuntsConfig.config.soloHardTimeLimit
-            else -> 0
-        }
-        val cooldown = when (difficulty) {
-            "easy" -> HuntsConfig.config.soloEasyCooldown
-            "medium" -> HuntsConfig.config.soloMediumCooldown
-            "hard" -> HuntsConfig.config.soloHardCooldown
-            else -> 0
-        }
-        val timeLimitString = formatTime(timeLimit)
-        val cooldownString = formatTime(cooldown)
+        val remainingTime = instance.endTime?.let { (it - System.currentTimeMillis()) / 1000 } ?: 0
+        val timeLeftString = formatTime(remainingTime.toInt())
         lore.add(
-            Text.literal("Time Limit: ").styled { it.withColor(Formatting.GRAY) }
-                .append(Text.literal(timeLimitString).styled { it.withColor(Formatting.AQUA) })
-        )
-        lore.add(
-            Text.literal("Cooldown: ").styled { it.withColor(Formatting.GRAY) }
-                .append(Text.literal(cooldownString).styled { it.withColor(Formatting.AQUA) })
+            Text.literal("Time Left: ").styled { it.withColor(Formatting.GRAY) }
+                .append(Text.literal(timeLeftString).styled { it.withColor(Formatting.AQUA) })
         )
 
         lore.add(Text.literal("Left-click to turn in").styled { it.withColor(Formatting.GREEN) })
-        lore.add(Text.literal("Right-click to see loot table").styled { it.withColor(Formatting.YELLOW) })
+        lore.add(Text.literal("Right-click to view loot pool").styled { it.withColor(Formatting.YELLOW) }) // Added this line
+
         CustomGui.setItemLore(item, lore)
         return item
     }
 
-    private fun createPreviewPokemonItem(entry: HuntPokemonEntry): ItemStack {
+    private fun createPreviewPokemonItem(entry: HuntPokemonEntry, difficulty: String): ItemStack {
         val properties = PokemonProperties.parse(
             "${entry.species}${if (entry.form != null) " form=${entry.form}" else ""}${if (entry.aspects.contains("shiny")) " aspect=shiny" else ""}"
         )
@@ -414,17 +456,13 @@ object PlayerHuntsGui {
 
         if (instance.requiredGender != null) {
             val genderText = instance.requiredGender.replaceFirstChar { it.titlecase() }
-            lore.add(
-                Text.literal("Required Gender: ").styled { it.withColor(Formatting.GRAY) }
-                    .append(Text.literal(genderText).styled { it.withColor(Formatting.LIGHT_PURPLE) })
-            )
+            lore.add(Text.literal("Required Gender: ").styled { it.withColor(Formatting.GRAY) }
+                .append(Text.literal(genderText).styled { it.withColor(Formatting.LIGHT_PURPLE) }))
         }
         if (instance.requiredIVs.isNotEmpty()) {
             val ivsText = instance.requiredIVs.joinToString(", ") { it.replaceFirstChar { it.uppercase() } }
-            lore.add(
-                Text.literal("Required IVs above 20: ").styled { it.withColor(Formatting.GRAY) }
-                    .append(Text.literal(ivsText).styled { it.withColor(Formatting.GOLD) })
-            )
+            lore.add(Text.literal("Required IVs above 20: ").styled { it.withColor(Formatting.GRAY) }
+                .append(Text.literal(ivsText).styled { it.withColor(Formatting.GOLD) }))
         }
 
         val timeLimit = when (difficulty) {
@@ -443,26 +481,20 @@ object PlayerHuntsGui {
         }
         val timeLimitString = formatTime(timeLimit)
         val cooldownString = formatTime(cooldown)
-        lore.add(
-            Text.literal("Time Limit: ").styled { it.withColor(Formatting.GRAY) }
-                .append(Text.literal(timeLimitString).styled { it.withColor(Formatting.AQUA) })
-        )
-        lore.add(
-            Text.literal("Cooldown: ").styled { it.withColor(Formatting.GRAY) }
-                .append(Text.literal(cooldownString).styled { it.withColor(Formatting.AQUA) })
-        )
+        lore.add(Text.literal("Time Limit: ").styled { it.withColor(Formatting.GRAY) }
+            .append(Text.literal(timeLimitString).styled { it.withColor(Formatting.AQUA) }))
+        lore.add(Text.literal("Cooldown: ").styled { it.withColor(Formatting.GRAY) }
+            .append(Text.literal(cooldownString).styled { it.withColor(Formatting.AQUA) }))
 
-        lore.add(if (difficulty == "global") Text.literal("Left-click to turn in").styled { it.withColor(Formatting.GREEN) }
-        else Text.literal("Left-click to start this hunt").styled { it.withColor(Formatting.YELLOW) })
+        lore.add(
+            if (difficulty == "global")
+                Text.literal("Left-click to turn in").styled { it.withColor(Formatting.GREEN) }
+            else
+                Text.literal("Left-click to start this hunt").styled { it.withColor(Formatting.YELLOW) }
+        )
         lore.add(Text.literal("Right-click to see loot table").styled { it.withColor(Formatting.YELLOW) })
         CustomGui.setItemLore(item, lore)
         return item
-    }
-
-    private fun createCooldownItem(difficulty: String): ItemStack {
-        return ItemStack(Items.RED_STAINED_GLASS_PANE).apply {
-            setCustomName(Text.literal("On Cooldown").styled { it.withColor(Formatting.RED) })
-        }
     }
 
     private fun createFillerPane(): ItemStack {
@@ -497,9 +529,7 @@ object PlayerHuntsGui {
         layout[22] = CustomGui.createPlayerHeadButton(
             textureName = "Back",
             title = Text.literal("Back").styled { it.withColor(Formatting.YELLOW) },
-            lore = listOf(
-                Text.literal("Return to ${if (difficulty == "global") "Global" else "Solo"} Hunts").styled { it.withColor(Formatting.GRAY) }
-            ),
+            lore = listOf(Text.literal("Return to ${if (difficulty == "global") "Global" else "Solo"} Hunts").styled { it.withColor(Formatting.GRAY) }),
             textureValue = SoloTextures.BACK
         )
         CustomGui.openGui(
@@ -532,9 +562,10 @@ object PlayerHuntsGui {
                 item
             }
             is com.cobblehunts.utils.CommandReward -> {
-                val displayItem = reward.serializableItemStack?.toItemStack(ops) ?: ItemStack(Items.COMMAND_BLOCK).apply {
-                    setCustomName(Text.literal("Command Reward").styled { it.withColor(Formatting.GOLD) })
-                }
+                val displayItem = reward.serializableItemStack?.toItemStack(ops)
+                    ?: ItemStack(Items.COMMAND_BLOCK).apply {
+                        setCustomName(Text.literal("Command Reward").styled { it.withColor(Formatting.GOLD) })
+                    }
                 val lore = listOf(
                     Text.literal("Chance: ").styled { it.withColor(Formatting.GRAY) }
                         .append(Text.literal("%.1f%%".format(reward.chance * 100)).styled { it.withColor(Formatting.RED) })
