@@ -2,15 +2,15 @@ package com.cobblehunts
 
 import com.cobblehunts.gui.HuntsEditorMainGui
 import com.cobblehunts.gui.PlayerHuntsGui
-import com.cobblehunts.utils.HuntPokemonEntry
-import com.cobblehunts.utils.HuntsConfig
-import com.cobblehunts.utils.LootReward
+import com.cobblehunts.utils.*
 import com.cobblemon.mod.common.Cobblemon
+import com.cobblemon.mod.common.api.pokemon.Natures
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties
 import com.cobblemon.mod.common.pokemon.Pokemon
 import com.everlastingutils.command.CommandManager
 import com.everlastingutils.scheduling.SchedulerManager
 import net.fabricmc.api.ModInitializer
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.text.Text
@@ -38,9 +38,11 @@ object CobbleHunts : ModInitializer {
 		HuntsConfig.initializeAndLoad()
 		registerCommands()
 		startGlobalHunt()
+		ServerLifecycleEvents.SERVER_STARTED.register { server ->
+		}
+
 		ServerTickEvents.END_SERVER_TICK.register { server ->
 			onServerTick()
-			// Start the GUI refresh scheduler (only once) so that every second it calls our refresh method
 			if (!guiRefreshScheduled) {
 				SchedulerManager.scheduleAtFixedRate("cobblehunts-gui-refresh", server, 0, 1, TimeUnit.SECONDS) {
 					PlayerHuntsGui.refreshDynamicGuis()
@@ -52,7 +54,7 @@ object CobbleHunts : ModInitializer {
 	}
 
 	private fun registerCommands() {
-		cmdManager.command("hunts", permissionLevel = 0) {
+		cmdManager.command("hunts", permission = "hunts.use") {
 			executes { ctx ->
 				val player = ctx.source.player as? ServerPlayerEntity
 				if (player != null) {
@@ -62,7 +64,7 @@ object CobbleHunts : ModInitializer {
 				}
 				1
 			}
-			subcommand("editor", permissionLevel = 2) {
+			subcommand("editor", permission = "hunts.editor") {
 				executes { ctx ->
 					val player = ctx.source.player as? ServerPlayerEntity
 					if (player != null) {
@@ -73,7 +75,7 @@ object CobbleHunts : ModInitializer {
 					1
 				}
 			}
-			subcommand("reload", permissionLevel = 2) {
+			subcommand("reload", permission = "hunts.reload") {
 				executes { ctx ->
 					HuntsConfig.reloadBlocking()
 					HuntsConfig.saveConfig()
@@ -110,6 +112,7 @@ object CobbleHunts : ModInitializer {
 	fun selectPokemonForDifficulty(difficulty: String): HuntPokemonEntry? {
 		val pokemonList = when (difficulty) {
 			"easy" -> HuntsConfig.config.soloEasyPokemon
+			"normal" -> HuntsConfig.config.soloNormalPokemon
 			"medium" -> HuntsConfig.config.soloMediumPokemon
 			"hard" -> HuntsConfig.config.soloHardPokemon
 			else -> throw IllegalArgumentException("Unknown difficulty: $difficulty")
@@ -124,6 +127,7 @@ object CobbleHunts : ModInitializer {
 	fun selectRewardForDifficulty(difficulty: String): LootReward? {
 		val lootList = when (difficulty) {
 			"easy" -> HuntsConfig.config.soloEasyLoot
+			"normal" -> HuntsConfig.config.soloNormalLoot
 			"medium" -> HuntsConfig.config.soloMediumLoot
 			"hard" -> HuntsConfig.config.soloHardLoot
 			else -> return null
@@ -157,9 +161,10 @@ object CobbleHunts : ModInitializer {
 		val pokemon = pokemonProperties.create()
 		val possibleGenders = pokemon.form.possibleGenders
 
+		// Determine requiredGender
 		val requiredGender = when (difficulty) {
 			"easy" -> null
-			"medium", "hard" -> {
+			"normal", "medium", "hard" -> {
 				when {
 					entry.gender != null -> {
 						when (entry.gender!!.lowercase()) {
@@ -187,6 +192,20 @@ object CobbleHunts : ModInitializer {
 			else -> null
 		}
 
+		// Determine requiredNature
+		val requiredNature = when (difficulty) {
+			"easy", "normal" -> null
+			"medium", "hard" -> {
+				if (entry.nature == null || entry.nature!!.lowercase() == "random") {
+					Natures.all().random().name.path.lowercase()
+				} else {
+					entry.nature!!.lowercase()
+				}
+			}
+			else -> null
+		}
+
+		// Determine requiredIVs
 		val allIVs = listOf("hp", "attack", "defense", "special_attack", "special_defense", "speed")
 		val requiredIVs = when (difficulty) {
 			"hard" -> {
@@ -200,7 +219,7 @@ object CobbleHunts : ModInitializer {
 		}
 
 		val reward = selectRewardForDifficulty(difficulty)
-		return HuntInstance(entry, requiredGender, requiredIVs, reward)
+		return HuntInstance(entry, requiredGender, requiredNature, requiredIVs, reward)
 	}
 
 	private fun startGlobalHunt() {
@@ -210,6 +229,7 @@ object CobbleHunts : ModInitializer {
 			val instance = HuntInstance(
 				entry = pokemon,
 				requiredGender = null,
+				requiredNature = null, // Global hunts do not specify a nature
 				requiredIVs = emptyList(),
 				reward = reward,
 				endTime = System.currentTimeMillis() + (HuntsConfig.config.globalTimeLimit * 1000L)
@@ -242,7 +262,7 @@ object CobbleHunts : ModInitializer {
 	}
 
 	fun refreshPreviewPokemon(player: ServerPlayerEntity) {
-		val difficulties = listOf("easy", "medium", "hard")
+		val difficulties = listOf("easy", "normal", "medium", "hard")
 		difficulties.forEach { difficulty ->
 			val data = getPlayerData(player)
 			if (!isOnCooldown(player, difficulty) &&
@@ -274,6 +294,7 @@ object CobbleHunts : ModInitializer {
 		data.activePokemon[difficulty] = instance
 		val timeLimit = when (difficulty) {
 			"easy" -> HuntsConfig.config.soloEasyTimeLimit
+			"normal" -> HuntsConfig.config.soloNormalTimeLimit
 			"medium" -> HuntsConfig.config.soloMediumTimeLimit
 			"hard" -> HuntsConfig.config.soloHardTimeLimit
 			else -> 0
@@ -304,6 +325,7 @@ data class PlayerHuntData(
 data class HuntInstance(
 	val entry: HuntPokemonEntry,
 	val requiredGender: String?,
+	val requiredNature: String?, // Added field for nature
 	val requiredIVs: List<String>,
 	val reward: LootReward?,
 	var endTime: Long? = null

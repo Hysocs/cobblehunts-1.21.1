@@ -24,9 +24,6 @@ import net.minecraft.util.Identifier
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
 
-/**
- * GUI for selecting and managing loot rewards for a specific tier in a hunt type.
- */
 object LootPoolSelectionGui {
     private val playerPages = ConcurrentHashMap<ServerPlayerEntity, Int>()
     private val playerTypes = ConcurrentHashMap<ServerPlayerEntity, String>()
@@ -37,7 +34,7 @@ object LootPoolSelectionGui {
         const val BACK = 49
         const val PREV_PAGE = 45
         const val NEXT_PAGE = 53
-        const val ADD_COMMAND = 50 // "Add Command Reward" button
+        const val ADD_COMMAND = 50
     }
 
     object Textures {
@@ -45,6 +42,21 @@ object LootPoolSelectionGui {
         const val NEXT_PAGE = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOGU0MDNjYzdiYmFjNzM2NzBiZDU0M2Y2YjA5NTViYWU3YjhlOTEyM2Q4M2JkNzYwZjYyMDRjNWFmZDhiZTdlMSJ9fX0="
         const val BACK = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzI0MzE5MTFmNDE3OGI0ZDJiNDEzYWE3ZjVjNzhhZTQ0NDdmZTkyNDY5NDNjMzFkZjMxMTYzYzBlMDQzZTBkNiJ9fX0="
         const val ADD_COMMAND = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvY2Q5NmI2ZjA4ZmNiYzVlMWI4MjJmYTBkZmZmYzMwNzJkMjRhYzVjNDkzNmJiMjE1YjE0ZmE4YTJiNmQ3MjQifX19"
+    }
+
+    fun createCancelButton(): ItemStack {
+        return CustomGui.createPlayerHeadButton(
+            textureName = "Cancel",
+            title = Text.literal("Cancel").styled { it.withColor(Formatting.RED) },
+            lore = listOf(Text.literal("Click to cancel").styled { it.withColor(Formatting.GRAY) }),
+            textureValue = Textures.BACK
+        )
+    }
+
+    fun createPlaceholderOutput(message: String): ItemStack {
+        return ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE).apply {
+            setCustomName(Text.literal(message).styled { it.withColor(Formatting.GRAY) })
+        }
     }
 
     fun openGui(player: ServerPlayerEntity, type: String, tier: String) {
@@ -220,14 +232,9 @@ object LootPoolSelectionGui {
     }
 
     private fun openCommandInputGui(player: ServerPlayerEntity, type: String, tier: String) {
-        val cancelButton = CustomGui.createPlayerHeadButton(
-            textureName = "Cancel",
-            title = Text.literal("Cancel").styled { it.withColor(Formatting.RED) },
-            lore = listOf(Text.literal("Click to cancel").styled { it.withColor(Formatting.GRAY) }),
-            textureValue = Textures.BACK
-        )
+        val cancelButton = createCancelButton()
         val blockedInput = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE)
-        val placeholderOutput = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE)
+        val placeholderOutput = createPlaceholderOutput("Enter command")
         AnvilGuiManager.openAnvilGui(
             player = player,
             id = "add_command_reward_${type}_$tier",
@@ -320,9 +327,6 @@ object LootPoolSelectionGui {
     }
 }
 
-/**
- * GUI for editing a specific loot reward's chance and command reward details.
- */
 object LootRewardEditGui {
     private object Slots {
         const val ITEM_DISPLAY = 0
@@ -484,16 +488,9 @@ object LootRewardEditGui {
                     id = "edit_command_title",
                     title = "Edit Display Title",
                     initialText = currentTitle,
-                    leftItem = CustomGui.createPlayerHeadButton(
-                        textureName = "Cancel",
-                        title = Text.literal("Cancel").styled { it.withColor(Formatting.RED) },
-                        lore = listOf(Text.literal("Click to cancel").styled { it.withColor(Formatting.GRAY) }),
-                        textureValue = Textures.BACK
-                    ),
+                    leftItem = LootPoolSelectionGui.createCancelButton(),
                     rightItem = ItemStack(Items.PAPER),
-                    resultItem = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE).apply {
-                        setCustomName(Text.literal("Enter title").styled { it.withColor(Formatting.GRAY) })
-                    },
+                    resultItem = LootPoolSelectionGui.createPlaceholderOutput("Enter title"),
                     onLeftClick = { _ -> player.closeHandledScreen() },
                     onRightClick = null,
                     onResultClick = { ctx ->
@@ -527,22 +524,14 @@ object LootRewardEditGui {
             Slots.EDIT_COUNT -> if (reward is CommandReward) {
                 val currentStack = reward.serializableItemStack?.toItemStack(ops) ?: ItemStack(Items.COMMAND_BLOCK)
                 val currentCount = currentStack.count
-                val placeholderOutput = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE).apply {
-                    setCustomName(Text.literal("Enter new count").styled { it.withColor(Formatting.GRAY) })
-                }
                 AnvilGuiManager.openAnvilGui(
                     player = player,
                     id = "edit_command_count",
                     title = "Edit Item Count",
                     initialText = currentCount.toString(),
-                    leftItem = CustomGui.createPlayerHeadButton(
-                        textureName = "Cancel",
-                        title = Text.literal("Cancel").styled { it.withColor(Formatting.RED) },
-                        lore = listOf(Text.literal("Click to cancel").styled { it.withColor(Formatting.GRAY) }),
-                        textureValue = Textures.BACK
-                    ),
+                    leftItem = LootPoolSelectionGui.createCancelButton(),
                     rightItem = ItemStack(Items.PAPER),
-                    resultItem = placeholderOutput,
+                    resultItem = LootPoolSelectionGui.createPlaceholderOutput("Enter new count"),
                     onLeftClick = { _ -> player.closeHandledScreen() },
                     onRightClick = null,
                     onResultClick = { ctx ->
@@ -577,26 +566,18 @@ object LootRewardEditGui {
             }
             Slots.ADD_ENCHANT -> if (reward is CommandReward) {
                 if (context.clickType == ClickType.LEFT) {
-                    val placeholderOutput = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE).apply {
-                        setCustomName(Text.literal("Enter enchantment data").styled { it.withColor(Formatting.GRAY) })
-                    }
                     AnvilGuiManager.openAnvilGui(
                         player = player,
                         id = "add_command_enchant",
                         title = "Add Enchantment",
                         initialText = "",
-                        leftItem = CustomGui.createPlayerHeadButton(
-                            textureName = "Cancel",
-                            title = Text.literal("Cancel").styled { it.withColor(Formatting.RED) },
-                            lore = listOf(Text.literal("Click to cancel").styled { it.withColor(Formatting.GRAY) }),
-                            textureValue = Textures.BACK
-                        ),
+                        leftItem = LootPoolSelectionGui.createCancelButton(),
                         rightItem = ItemStack(Items.PAPER),
-                        resultItem = placeholderOutput,
+                        resultItem = LootPoolSelectionGui.createPlaceholderOutput("Enter enchantment data"),
                         onLeftClick = { _ -> player.closeHandledScreen() },
                         onRightClick = null,
                         onResultClick = { ctx ->
-                            val enchantInput = ctx.handler.currentText.trim() // expected format: "minecraft:sharpness,5"
+                            val enchantInput = ctx.handler.currentText.trim()
                             val parts = enchantInput.split(",")
                             if (parts.size == 2) {
                                 try {
@@ -663,16 +644,9 @@ object LootRewardEditGui {
                     id = "add_command_lore",
                     title = "Add Lore Line",
                     initialText = "",
-                    leftItem = CustomGui.createPlayerHeadButton(
-                        textureName = "Cancel",
-                        title = Text.literal("Cancel").styled { it.withColor(Formatting.RED) },
-                        lore = listOf(Text.literal("Click to cancel").styled { it.withColor(Formatting.GRAY) }),
-                        textureValue = LootPoolSelectionGui.Textures.BACK
-                    ),
+                    leftItem = LootPoolSelectionGui.createCancelButton(),
                     rightItem = ItemStack(Items.PAPER),
-                    resultItem = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE).apply {
-                        setCustomName(Text.literal("Enter lore line").styled { it.withColor(Formatting.GRAY) })
-                    },
+                    resultItem = LootPoolSelectionGui.createPlaceholderOutput("Enter lore line"),
                     onLeftClick = { _ -> player.closeHandledScreen() },
                     onRightClick = null,
                     onResultClick = { ctx ->
@@ -714,16 +688,9 @@ object LootRewardEditGui {
                         id = "remove_command_lore",
                         title = "Remove Lore Line",
                         initialText = "",
-                        leftItem = CustomGui.createPlayerHeadButton(
-                            textureName = "Cancel",
-                            title = Text.literal("Cancel").styled { it.withColor(Formatting.RED) },
-                            lore = listOf(Text.literal("Click to cancel").styled { it.withColor(Formatting.GRAY) }),
-                            textureValue = LootPoolSelectionGui.Textures.BACK
-                        ),
+                        leftItem = LootPoolSelectionGui.createCancelButton(),
                         rightItem = ItemStack(Items.PAPER),
-                        resultItem = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE).apply {
-                            setCustomName(Text.literal("Enter lore index to remove").styled { it.withColor(Formatting.GRAY) })
-                        },
+                        resultItem = LootPoolSelectionGui.createPlaceholderOutput("Enter lore index to remove"),
                         onLeftClick = { _ -> player.closeHandledScreen() },
                         onRightClick = null,
                         onResultClick = { ctx ->

@@ -223,6 +223,7 @@ object TurnInGui {
                     // Award leaderboard points
                     val points = when (rarity) {
                         "easy" -> HuntsConfig.config.soloEasyPoints
+                        "normal" -> HuntsConfig.config.soloNormalPoints
                         "medium" -> HuntsConfig.config.soloMediumPoints
                         "hard" -> HuntsConfig.config.soloHardPoints
                         "global" -> HuntsConfig.config.globalPoints
@@ -240,6 +241,7 @@ object TurnInGui {
                     // Select reward from loot pool
                     val lootPool = when (rarity) {
                         "easy" -> HuntsConfig.config.soloEasyLoot
+                        "normal" -> HuntsConfig.config.soloNormalLoot
                         "medium" -> HuntsConfig.config.soloMediumLoot
                         "hard" -> HuntsConfig.config.soloHardLoot
                         "global" -> HuntsConfig.config.globalLoot
@@ -296,6 +298,7 @@ object TurnInGui {
                         data.activePokemon.remove(rarity)
                         val cooldownTime = when (rarity) {
                             "easy" -> HuntsConfig.config.soloEasyCooldown
+                            "normal" -> HuntsConfig.config.soloNormalCooldown
                             "medium" -> HuntsConfig.config.soloMediumCooldown
                             "hard" -> HuntsConfig.config.soloHardCooldown
                             else -> 0
@@ -331,15 +334,32 @@ object TurnInGui {
         val reasons = mutableListOf<String>()
         val requiredEntry = activeHunt.entry
 
+        // Check species (required for all difficulties)
+        if (!pokemon.species.name.equals(requiredEntry.species, ignoreCase = true)) {
+            reasons.add("Incorrect species")
+        }
+
+        // Check form if applicable (optional across all difficulties)
         if (requiredEntry.form != null && !pokemon.form.name.equals(requiredEntry.form, ignoreCase = true)) {
             reasons.add("Incorrect form")
         }
+
+        // Check aspects (e.g., shiny, if specified)
         if (!pokemon.aspects.containsAll(requiredEntry.aspects)) {
             reasons.add("Missing required aspects")
         }
+
+        // Check gender if required (Normal, Medium, Hard)
         if (activeHunt.requiredGender != null && !pokemon.gender.name.equals(activeHunt.requiredGender, ignoreCase = true)) {
             reasons.add("Incorrect gender")
         }
+
+        // Check nature if required (Medium, Hard)
+        if (activeHunt.requiredNature != null && !pokemon.nature.name.path.equals(activeHunt.requiredNature, ignoreCase = true)) {
+            reasons.add("Incorrect nature")
+        }
+
+        // Check IVs if required (Hard)
         if (activeHunt.requiredIVs.isNotEmpty()) {
             val lowIVs = activeHunt.requiredIVs.filter { iv ->
                 val stat = when (iv.lowercase()) {
@@ -357,6 +377,7 @@ object TurnInGui {
                 reasons.add("Low IVs in: ${lowIVs.joinToString(", ")}")
             }
         }
+
         return reasons
     }
 
@@ -371,7 +392,7 @@ object TurnInGui {
                 return reward
             }
         }
-        return lootPool.last() // Fallback to last item if rounding errors occur
+        return lootPool.last()
     }
 
     private fun createPokemonItem(pokemon: Pokemon): ItemStack {

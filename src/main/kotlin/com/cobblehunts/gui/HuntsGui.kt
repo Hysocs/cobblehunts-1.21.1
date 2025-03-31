@@ -14,6 +14,8 @@ import com.google.gson.JsonElement
 import com.mojang.authlib.GameProfile
 import com.mojang.serialization.DynamicOps
 import com.mojang.serialization.JsonOps
+import net.minecraft.component.DataComponentTypes
+import net.minecraft.component.type.ProfileComponent
 import net.minecraft.item.ItemStack
 import net.minecraft.item.Items
 import net.minecraft.registry.RegistryOps
@@ -22,6 +24,7 @@ import net.minecraft.text.Text
 import net.minecraft.util.ClickType
 import net.minecraft.util.Formatting
 import net.minecraft.util.Uuids
+import java.util.concurrent.CompletableFuture
 import kotlin.math.min
 
 object PlayerHuntsGui {
@@ -41,6 +44,27 @@ object PlayerHuntsGui {
 
     private val dynamicGuiData = mutableMapOf<ServerPlayerEntity, Pair<String, MutableList<ItemStack>>>()
 
+    /** Checks for expired solo hunts and sets cooldowns accordingly. */
+    private fun checkExpiredHunts(player: ServerPlayerEntity) {
+        val data = CobbleHunts.getPlayerData(player)
+        val currentTime = System.currentTimeMillis()
+        val difficulties = listOf("easy", "normal", "medium", "hard")
+        difficulties.forEach { difficulty ->
+            val activeInstance = data.activePokemon[difficulty]
+            if (activeInstance != null && activeInstance.endTime != null && currentTime >= activeInstance.endTime!!) {
+                data.activePokemon.remove(difficulty)
+                val cooldownDuration = when (difficulty) {
+                    "easy" -> HuntsConfig.config.soloEasyCooldown
+                    "normal" -> HuntsConfig.config.soloNormalCooldown
+                    "medium" -> HuntsConfig.config.soloMediumCooldown
+                    "hard" -> HuntsConfig.config.soloHardCooldown
+                    else -> 0
+                }
+                data.cooldowns[difficulty] = currentTime + cooldownDuration * 1000L
+            }
+        }
+    }
+
     fun refreshDynamicGuis() {
         dynamicGuiData.forEach { (player, pair) ->
             val (guiType, staticLayout) = pair
@@ -55,10 +79,11 @@ object PlayerHuntsGui {
                     newLayout[GlobalSlots.POKEMON] = getGlobalDynamicItem()
                 }
                 "solo" -> {
+                    checkExpiredHunts(player)
                     CobbleHunts.refreshPreviewPokemon(player)
-                    val difficulties = listOf("easy", "medium", "hard")
-                    val indicatorSlots = listOf(SoloSlots.INDICATOR_EASY, SoloSlots.INDICATOR_MEDIUM, SoloSlots.INDICATOR_HARD)
-                    val pokemonSlots = listOf(SoloSlots.POKEMON_EASY, SoloSlots.POKEMON_MEDIUM, SoloSlots.POKEMON_HARD)
+                    val difficulties = listOf("easy", "normal", "medium", "hard")
+                    val indicatorSlots = listOf(SoloSlots.INDICATOR_EASY, SoloSlots.INDICATOR_NORMAL, SoloSlots.INDICATOR_MEDIUM, SoloSlots.INDICATOR_HARD)
+                    val pokemonSlots = listOf(SoloSlots.POKEMON_EASY, SoloSlots.POKEMON_NORMAL, SoloSlots.POKEMON_MEDIUM, SoloSlots.POKEMON_HARD)
                     val data = CobbleHunts.getPlayerData(player)
                     difficulties.forEachIndexed { index, difficulty ->
                         val activeInstance = data.activePokemon[difficulty]
@@ -120,23 +145,76 @@ object PlayerHuntsGui {
         }
     }
 
-    private fun openLeaderboardGui(player: ServerPlayerEntity) {
-        dynamicGuiData.remove(player)
+    fun openLeaderboardGui(player: ServerPlayerEntity) {
+        val layout = MutableList(54) { createFillerPane() } // Initial empty layout
         CustomGui.openGui(
             player,
             "Leaderboard",
-            generateLeaderboardLayout(player),
-            3,
-            { context -> if (context.slotIndex == 22) openMainGui(player) },
-            { }
+            layout,
+            6,
+            { context ->
+                if (context.slotIndex == 49) {
+                    player.closeHandledScreen()
+                    openMainGui(player) // Replace with your main menu function
+                }
+            },
+            { /* close handler */ }
         )
+
+        // Populate the layout asynchronously
+        generateLeaderboardLayout(player, layout)
     }
 
-    private fun generateLeaderboardLayout(player: ServerPlayerEntity): List<ItemStack> {
-        val layout = MutableList(27) { createFillerPane() }
-        val topPlayers = LeaderboardManager.getTopPlayers(10)
-        val leaderboardSlots = listOf(11, 12, 13, 14, 15)
+    private fun generateLeaderboardLayout(player: ServerPlayerEntity, layout: MutableList<ItemStack>) {
+        val topPlayers = LeaderboardManager.getTopPlayers(16)
+        val leaderboardSlots = listOf(13, 21, 22, 23, 29, 30, 31, 32, 33, 37, 38, 39, 40, 41, 42, 43)
 
+        // Place top players with default heads and update asynchronously
+        for (i in 0 until minOf(topPlayers.size, 16)) {
+            val (playerName, points) = topPlayers[i]
+            val slot = leaderboardSlots[i]
+
+            // Set default head with offline UUID
+            val defaultHead = ItemStack(Items.PLAYER_HEAD)
+            val offlineProfile = GameProfile(Uuids.getOfflinePlayerUuid(playerName), playerName)
+            val offlineProfileComponent = ProfileComponent(offlineProfile)
+            defaultHead.set(DataComponentTypes.PROFILE, offlineProfileComponent)
+
+            // Set display name and lore
+            val rankText = Text.literal("Rank ").styled { it.withColor(Formatting.GRAY) }
+            val rankNumber = Text.literal("${i + 1}").styled { it.withColor(Formatting.GOLD) }
+            val colon = Text.literal(": ").styled { it.withColor(Formatting.GRAY) }
+            val playerNameText = Text.literal(playerName).styled { it.withColor(Formatting.AQUA) }
+            val fullTitle = rankText.append(rankNumber).append(colon).append(playerNameText)
+            defaultHead.setCustomName(fullTitle)
+
+            val pointsText = Text.literal("Points: ").styled { it.withColor(Formatting.GRAY) }
+            val pointsValue = Text.literal("$points").styled { it.withColor(Formatting.GREEN) }
+            val loreLine = pointsText.append(pointsValue)
+            CustomGui.setItemLore(defaultHead, listOf(loreLine))
+
+            layout[slot] = defaultHead
+
+            // Asynchronously update with real player skin
+            CompletableFuture.supplyAsync {
+                player.server.userCache?.findByName(playerName)?.orElse(null)
+            }.thenAccept { profile ->
+                if (profile != null) {
+                    player.server.execute {
+                        val head = ItemStack(Items.PLAYER_HEAD)
+                        val profileComponent = ProfileComponent(profile)
+                        head.set(DataComponentTypes.PROFILE, profileComponent)
+                        head.setCustomName(fullTitle) // Reuse the same title
+                        CustomGui.setItemLore(head, listOf(loreLine))
+
+                        layout[slot] = head
+                        CustomGui.refreshGui(player, layout)
+                    }
+                }
+            }
+        }
+
+        // Info head at slot 4
         val infoHead = CustomGui.createPlayerHeadButton(
             textureName = "Info",
             title = Text.literal("Points Information").styled { it.withColor(Formatting.WHITE) },
@@ -146,6 +224,8 @@ object PlayerHuntsGui {
                     .append(Text.literal("${HuntsConfig.config.globalPoints} points").styled { it.withColor(Formatting.GREEN) }),
                 Text.literal("Easy Hunt: ").styled { it.withColor(Formatting.GRAY) }
                     .append(Text.literal("${HuntsConfig.config.soloEasyPoints} points").styled { it.withColor(Formatting.GREEN) }),
+                Text.literal("Normal Hunt: ").styled { it.withColor(Formatting.GRAY) }
+                    .append(Text.literal("${HuntsConfig.config.soloNormalPoints} points").styled { it.withColor(Formatting.GREEN) }),
                 Text.literal("Medium Hunt: ").styled { it.withColor(Formatting.GRAY) }
                     .append(Text.literal("${HuntsConfig.config.soloMediumPoints} points").styled { it.withColor(Formatting.GREEN) }),
                 Text.literal("Hard Hunt: ").styled { it.withColor(Formatting.GRAY) }
@@ -155,39 +235,16 @@ object PlayerHuntsGui {
         )
         layout[4] = infoHead
 
-        for (i in 0 until min(topPlayers.size, 5)) {
-            val (playerName, points) = topPlayers[i]
-            val head = ItemStack(Items.PLAYER_HEAD)
-            val userCache = player.server.userCache
-            val gameProfile = userCache?.findByName(playerName)?.orElse(null)
-            val profile = gameProfile ?: GameProfile(Uuids.getOfflinePlayerUuid(playerName), playerName)
-            val profileComponent = net.minecraft.component.type.ProfileComponent(profile)
-            head.set(net.minecraft.component.DataComponentTypes.PROFILE, profileComponent)
-
-            val rankText = Text.literal("Rank ").styled { it.withColor(Formatting.GRAY) }
-            val rankNumber = Text.literal("${i + 1}").styled { it.withColor(Formatting.GOLD) }
-            val colon = Text.literal(": ").styled { it.withColor(Formatting.GRAY) }
-            val playerNameText = Text.literal(playerName).styled { it.withColor(Formatting.AQUA) }
-            val fullTitle = rankText.append(rankNumber).append(colon).append(playerNameText)
-            head.setCustomName(fullTitle)
-
-            val pointsText = Text.literal("Points: ").styled { it.withColor(Formatting.GRAY) }
-            val pointsValue = Text.literal("$points").styled { it.withColor(Formatting.GREEN) }
-            val loreLine = pointsText.append(pointsValue)
-            CustomGui.setItemLore(head, listOf(loreLine))
-
-            if (i < leaderboardSlots.size) {
-                layout[leaderboardSlots[i]] = head
-            }
-        }
-
-        layout[22] = CustomGui.createPlayerHeadButton(
+        // Back button at slot 49
+        layout[49] = CustomGui.createPlayerHeadButton(
             textureName = "Back",
             title = Text.literal("Back").styled { it.withColor(Formatting.YELLOW) },
             lore = listOf(Text.literal("Return to main menu").styled { it.withColor(Formatting.GRAY) }),
             textureValue = MainTextures.BACK
         )
-        return layout
+
+        // Initial refresh to show default heads
+        CustomGui.refreshGui(player, layout)
     }
 
     private object GlobalSlots {
@@ -214,13 +271,11 @@ object PlayerHuntsGui {
 
     private fun generateGlobalLayout(): List<ItemStack> {
         val layout = MutableList(27) { createFillerPane() }
-        // Add indicator slot at position 4
         layout[4] = if (CobbleHunts.globalHuntState != null) {
             ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
         } else {
             ItemStack(Items.BLACK_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
         }
-        // Pokémon slot
         layout[GlobalSlots.POKEMON] = getGlobalDynamicItem()
         layout[GlobalSlots.BACK] = CustomGui.createPlayerHeadButton(
             textureName = "Back",
@@ -246,10 +301,12 @@ object PlayerHuntsGui {
 
     private object SoloSlots {
         const val INDICATOR_EASY = 1
-        const val INDICATOR_MEDIUM = 4
+        const val INDICATOR_NORMAL = 3
+        const val INDICATOR_MEDIUM = 5
         const val INDICATOR_HARD = 7
         const val POKEMON_EASY = 10
-        const val POKEMON_MEDIUM = 13
+        const val POKEMON_NORMAL = 12
+        const val POKEMON_MEDIUM = 14
         const val POKEMON_HARD = 16
         const val BACK = 22
     }
@@ -260,6 +317,7 @@ object PlayerHuntsGui {
     }
 
     fun openSoloHuntsGui(player: ServerPlayerEntity) {
+        checkExpiredHunts(player)
         CobbleHunts.refreshPreviewPokemon(player)
         val layout = generateSoloLayout(player)
         dynamicGuiData[player] = Pair("solo", layout.toMutableList())
@@ -275,9 +333,9 @@ object PlayerHuntsGui {
 
     private fun generateSoloLayout(player: ServerPlayerEntity): List<ItemStack> {
         val layout = MutableList(27) { createFillerPane() }
-        val difficulties = listOf("easy", "medium", "hard")
-        val indicatorSlots = listOf(SoloSlots.INDICATOR_EASY, SoloSlots.INDICATOR_MEDIUM, SoloSlots.INDICATOR_HARD)
-        val pokemonSlots = listOf(SoloSlots.POKEMON_EASY, SoloSlots.POKEMON_MEDIUM, SoloSlots.POKEMON_HARD)
+        val difficulties = listOf("easy", "normal", "medium", "hard")
+        val indicatorSlots = listOf(SoloSlots.INDICATOR_EASY, SoloSlots.INDICATOR_NORMAL, SoloSlots.INDICATOR_MEDIUM, SoloSlots.INDICATOR_HARD)
+        val pokemonSlots = listOf(SoloSlots.POKEMON_EASY, SoloSlots.POKEMON_NORMAL, SoloSlots.POKEMON_MEDIUM, SoloSlots.POKEMON_HARD)
         val data = CobbleHunts.getPlayerData(player)
 
         difficulties.forEachIndexed { index, difficulty ->
@@ -301,8 +359,8 @@ object PlayerHuntsGui {
     }
 
     private fun handleSoloInteraction(context: InteractionContext, player: ServerPlayerEntity) {
-        val difficulties = listOf("easy", "medium", "hard")
-        val pokemonSlots = listOf(SoloSlots.POKEMON_EASY, SoloSlots.POKEMON_MEDIUM, SoloSlots.POKEMON_HARD)
+        val difficulties = listOf("easy", "normal", "medium", "hard")
+        val pokemonSlots = listOf(SoloSlots.POKEMON_EASY, SoloSlots.POKEMON_NORMAL, SoloSlots.POKEMON_MEDIUM, SoloSlots.POKEMON_HARD)
 
         if (context.slotIndex in pokemonSlots) {
             val index = pokemonSlots.indexOf(context.slotIndex)
@@ -405,6 +463,10 @@ object PlayerHuntsGui {
             val genderText = instance.requiredGender.replaceFirstChar { it.titlecase() }
             lore.add(Text.literal("- Gender: $genderText").styled { it.withColor(Formatting.LIGHT_PURPLE) })
         }
+        if (instance.requiredNature != null) {
+            val natureText = instance.requiredNature.replaceFirstChar { it.titlecase() }
+            lore.add(Text.literal("- Nature: $natureText").styled { it.withColor(Formatting.GREEN) })
+        }
         if (instance.requiredIVs.isNotEmpty()) {
             val ivsText = instance.requiredIVs.joinToString(", ") { it.replaceFirstChar { it.uppercase() } }
             lore.add(Text.literal("- IVs above 20: $ivsText").styled { it.withColor(Formatting.GRAY) })
@@ -418,23 +480,7 @@ object PlayerHuntsGui {
         )
 
         lore.add(Text.literal("Left-click to turn in").styled { it.withColor(Formatting.GREEN) })
-        lore.add(Text.literal("Right-click to view loot pool").styled { it.withColor(Formatting.YELLOW) }) // Added this line
-
-        CustomGui.setItemLore(item, lore)
-        return item
-    }
-
-    private fun createPreviewPokemonItem(entry: HuntPokemonEntry, difficulty: String): ItemStack {
-        val properties = PokemonProperties.parse(
-            "${entry.species}${if (entry.form != null) " form=${entry.form}" else ""}${if (entry.aspects.contains("shiny")) " aspect=shiny" else ""}"
-        )
-        val pokemon = properties.create()
-        val item = PokemonItem.from(pokemon)
-        val displayName = "${entry.species.replaceFirstChar { it.titlecase()}}${if (entry.form != null) " (${entry.form.replaceFirstChar { it.titlecase() }})" else ""}${if (entry.aspects.contains("shiny")) ", Shiny" else ""}"
-        item.setCustomName(Text.literal(displayName).styled { it.withColor(Formatting.WHITE) })
-        val lore = mutableListOf<Text>()
-        lore.add(Text.literal("Capture this Pokémon to complete the hunt.").styled { it.withColor(Formatting.GRAY) })
-        lore.add(Text.literal("Right-click to see loot table").styled { it.withColor(Formatting.YELLOW) })
+        lore.add(Text.literal("Right-click to view loot pool").styled { it.withColor(Formatting.YELLOW) })
         CustomGui.setItemLore(item, lore)
         return item
     }
@@ -459,6 +505,11 @@ object PlayerHuntsGui {
             lore.add(Text.literal("Required Gender: ").styled { it.withColor(Formatting.GRAY) }
                 .append(Text.literal(genderText).styled { it.withColor(Formatting.LIGHT_PURPLE) }))
         }
+        if (instance.requiredNature != null) {
+            val natureText = instance.requiredNature.replaceFirstChar { it.titlecase() }
+            lore.add(Text.literal("Required Nature: ").styled { it.withColor(Formatting.GRAY) }
+                .append(Text.literal(natureText).styled { it.withColor(Formatting.GREEN) }))
+        }
         if (instance.requiredIVs.isNotEmpty()) {
             val ivsText = instance.requiredIVs.joinToString(", ") { it.replaceFirstChar { it.uppercase() } }
             lore.add(Text.literal("Required IVs above 20: ").styled { it.withColor(Formatting.GRAY) }
@@ -467,6 +518,7 @@ object PlayerHuntsGui {
 
         val timeLimit = when (difficulty) {
             "easy" -> HuntsConfig.config.soloEasyTimeLimit
+            "normal" -> HuntsConfig.config.soloNormalTimeLimit
             "medium" -> HuntsConfig.config.soloMediumTimeLimit
             "hard" -> HuntsConfig.config.soloHardTimeLimit
             "global" -> HuntsConfig.config.globalTimeLimit
@@ -474,6 +526,7 @@ object PlayerHuntsGui {
         }
         val cooldown = when (difficulty) {
             "easy" -> HuntsConfig.config.soloEasyCooldown
+            "normal" -> HuntsConfig.config.soloNormalCooldown
             "medium" -> HuntsConfig.config.soloMediumCooldown
             "hard" -> HuntsConfig.config.soloHardCooldown
             "global" -> HuntsConfig.config.globalCooldown
@@ -504,8 +557,9 @@ object PlayerHuntsGui {
     private fun getRarityColor(difficulty: String): Formatting {
         return when (difficulty) {
             "easy" -> Formatting.GREEN
-            "medium" -> Formatting.BLUE
-            "hard" -> Formatting.GOLD
+            "normal" -> Formatting.BLUE
+            "medium" -> Formatting.GOLD
+            "hard" -> Formatting.RED
             "global" -> Formatting.DARK_PURPLE
             else -> Formatting.WHITE
         }
@@ -515,6 +569,7 @@ object PlayerHuntsGui {
         val lootList = when (difficulty) {
             "global" -> HuntsConfig.config.globalLoot
             "easy" -> HuntsConfig.config.soloEasyLoot
+            "normal" -> HuntsConfig.config.soloNormalLoot
             "medium" -> HuntsConfig.config.soloMediumLoot
             "hard" -> HuntsConfig.config.soloHardLoot
             else -> emptyList()

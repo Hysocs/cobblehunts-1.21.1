@@ -37,4 +37,8 @@ object LeaderboardManager {
     fun getTopPlayers(limit: Int): List<Pair<String, Int>> {
         return data.entries.sortedByDescending { it.value }.take(limit).map { it.key to it.value }
     }
+    fun getAllPlayerNames(): List<String> {
+        return data.keys.toList()
+    }
+
 }
