@@ -169,8 +169,9 @@ object LootPoolSelectionGui {
                     if (index < lootPool.size) {
                         val reward = lootPool[index]
                         when (context.clickType) {
-                            ClickType.LEFT -> LootRewardEditGui.openGui(player, type, tier, reward)
-                            ClickType.RIGHT -> {
+                            // **Reversed: Right-click to edit, Left-click to remove**
+                            ClickType.RIGHT -> LootRewardEditGui.openGui(player, type, tier, reward)
+                            ClickType.LEFT -> {
                                 lootPool.removeAt(index)
                                 HuntsConfig.saveConfig()
                                 player.server.execute {
@@ -206,8 +207,9 @@ object LootPoolSelectionGui {
                     Text.literal("Chance: ").styled { it.withColor(Formatting.GRAY) }
                         .append(Text.literal("%.1f%%".format(reward.chance * 100)).styled { it.withColor(Formatting.RED) }),
                     Text.literal(""),
-                    Text.literal("Left-click to edit").styled { it.withColor(Formatting.YELLOW) },
-                    Text.literal("Right-click to remove").styled { it.withColor(Formatting.YELLOW) }
+                    // **Updated lore to reflect reversed actions**
+                    Text.literal("Right-click to edit").styled { it.withColor(Formatting.YELLOW) },
+                    Text.literal("Left-click to remove").styled { it.withColor(Formatting.YELLOW) }
                 )
                 CustomGui.setItemLore(item, lore)
                 item
@@ -221,8 +223,9 @@ object LootPoolSelectionGui {
                 lore.add(Text.literal("Chance: ").styled { it.withColor(Formatting.GRAY) }
                     .append(Text.literal("%.1f%%".format(reward.chance * 100)).styled { it.withColor(Formatting.RED) }))
                 lore.add(Text.literal(""))
-                lore.add(Text.literal("Left-click to edit").styled { it.withColor(Formatting.YELLOW) })
-                lore.add(Text.literal("Right-click to remove").styled { it.withColor(Formatting.YELLOW) })
+                // **Updated lore to reflect reversed actions**
+                lore.add(Text.literal("Right-click to edit").styled { it.withColor(Formatting.YELLOW) })
+                lore.add(Text.literal("Left-click to remove").styled { it.withColor(Formatting.YELLOW) })
                 CustomGui.setItemLore(displayItem, lore)
                 displayItem
             }
@@ -333,7 +336,7 @@ object LootRewardEditGui {
         const val REMOVE_LORE = 3
         const val EDIT_COUNT = 4
         const val ADD_ENCHANT = 5
-        const val EDIT_COMMAND = 6 // New slot for editing command
+        const val EDIT_COMMAND = 6
         const val DECREASE_LARGE = 19
         const val DECREASE_MEDIUM = 20
         const val DECREASE_SMALL = 21
@@ -348,10 +351,9 @@ object LootRewardEditGui {
         const val INCREASE = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOTU3YTViZGY0MmYxNTIxNzhkMTU0YmIyMjM3ZDlmZDM1NzcyYTdmMzJiY2ZkMzNiZWViOGVkYzQ4MjBiYSJ9fX0="
         const val DECREASE = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOTZhMDExZTYyNmI3MWNlYWQ5ODQxOTM1MTFlODJlNjVjMTM1OTU2NWYwYTJmY2QxMTg0ODcyZjg5ZDkwOGM2NSJ9fX0="
         const val BACK = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzI0MzE5MTFmNDE3OGI0ZDJiNDEzYWE3ZjVjNzhhZTQ0NDdmZTkyNDY5NDNjMzFkZjMxMTYzYzBlMDQzZTBkNiJ9fX0="
-        const val EDIT_COUNT = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7ImV4dCI6ImFkZGl0X2NvdW50In19"
-        const val ADD_ENCHANT = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7ImV4dCI6ImFkZGVkX2VuY2hhbnQifX0="
-        // New texture for Edit Command button
-        const val EDIT_COMMAND = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZWRpdF9jb21tYW5kIn19fQ=="
+        const val EDIT_COUNT = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvODg5ZWUwYjdmZWY5NTdlZDliNDY0NzU2ZTllNTYxNTQ2OGE5YzQwYzZjMGIxM2Y0NTFmMzNiNDEwMzg5MWVhYiJ9fX0="
+        const val ADD_ENCHANT = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOTU3YTViZGY0MmYxNTIxNzhkMTU0YmIyMjM3ZDlmZDM1NzcyYTdmMzJiY2ZkMzNiZWViOGVkYzQ4MjBiYSJ9fX0="
+        const val EDIT_COMMAND = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOTU2MTI3OWFhYjM5ZmZmNDljODk2ZDhhNDg0NTQ3NDRlZjNkODdmNTYxMTQ3NDhhYzVlMzI4ZWY3ODA4N2U4In19fQ=="
     }
 
     fun openGui(player: ServerPlayerEntity, type: String, tier: String, reward: LootReward) {
@@ -369,21 +371,28 @@ object LootRewardEditGui {
         val layout = MutableList(54) { createFillerPane() }
         when (reward) {
             is ItemReward -> {
-                layout[Slots.ITEM_DISPLAY] = reward.serializableItemStack?.toItemStack(ops)?.copy() ?: ItemStack(Items.PAPER)
+                val item = reward.serializableItemStack?.toItemStack(ops)?.copy() ?: ItemStack(Items.PAPER)
+                // **Updated lore for ItemReward in edit GUI**
+                val lore = listOf(
+                    Text.literal("Drag item to change").styled { it.withColor(Formatting.YELLOW) }
+                )
+                CustomGui.setItemLore(item, lore)
+                layout[Slots.ITEM_DISPLAY] = item
             }
             is CommandReward -> {
                 val displayItem = reward.serializableItemStack?.toItemStack(ops)
                     ?: ItemStack(Items.COMMAND_BLOCK).apply {
                         setCustomName(Text.literal("Command Reward").styled { it.withColor(Formatting.GOLD) })
                     }
+                // **Updated lore for CommandReward in edit GUI**
                 val lore = mutableListOf<Text>()
                 lore.add(Text.literal("Command: ").styled { it.withColor(Formatting.GRAY) }
                     .append(Text.literal("/${reward.command}").styled { it.withColor(Formatting.WHITE) }))
                 lore.add(Text.literal("Chance: ").styled { it.withColor(Formatting.GRAY) }
                     .append(Text.literal("%.1f%%".format(reward.chance * 100)).styled { it.withColor(Formatting.RED) }))
                 lore.add(Text.literal(""))
-                lore.add(Text.literal("Left-click to edit").styled { it.withColor(Formatting.YELLOW) })
-                lore.add(Text.literal("Right-click to remove").styled { it.withColor(Formatting.YELLOW) })
+                lore.add(Text.literal("Drag item to change display").styled { it.withColor(Formatting.YELLOW) })
+                lore.add(Text.literal("Right-click to reset display").styled { it.withColor(Formatting.YELLOW) })
                 CustomGui.setItemLore(displayItem, lore)
                 layout[Slots.ITEM_DISPLAY] = displayItem.copy()
                 layout[Slots.EDIT_TITLE] = CustomGui.createPlayerHeadButton(
@@ -419,7 +428,6 @@ object LootRewardEditGui {
                     ),
                     textureValue = Textures.ADD_ENCHANT
                 )
-                // New Edit Command button for changing the command text
                 layout[Slots.EDIT_COMMAND] = CustomGui.createPlayerHeadButton(
                     textureName = "EditCommand",
                     title = Text.literal("Edit Command").styled { it.withColor(Formatting.AQUA) },
@@ -476,24 +484,30 @@ object LootRewardEditGui {
         }
         when (context.slotIndex) {
             Slots.ITEM_DISPLAY -> {
-                if (reward is CommandReward) {
-                    if (context.clickType == ClickType.LEFT) {
-                        val cursorStack = player.currentScreenHandler.getCursorStack()
-                        if (!cursorStack.isEmpty()) {
-                            val serializable = SerializableItemStack.fromItemStack(cursorStack.copy(), ops)
-                            reward.serializableItemStack = serializable
-                            player.currentScreenHandler.setCursorStack(ItemStack.EMPTY)
-                            HuntsConfig.saveConfig()
-                            player.server.execute { CustomGui.refreshGui(player, generateEditLayout(reward, ops)) }
-                            player.sendMessage(Text.literal("Set display item for command reward"), false)
-                        }
-                    } else if (context.clickType == ClickType.RIGHT) {
-                        val defaultStack = ItemStack(Items.PAPER)
-                        reward.serializableItemStack = SerializableItemStack.fromItemStack(defaultStack, ops)
+                val cursorStack = player.currentScreenHandler.getCursorStack()
+                if (!cursorStack.isEmpty()) {
+                    // **Handle dragging/placing an item to change for both reward types**
+                    val serializable = SerializableItemStack.fromItemStack(cursorStack.copy(), ops)
+                    if (reward is ItemReward) {
+                        reward.serializableItemStack = serializable
+                        player.currentScreenHandler.setCursorStack(ItemStack.EMPTY)
                         HuntsConfig.saveConfig()
                         player.server.execute { CustomGui.refreshGui(player, generateEditLayout(reward, ops)) }
-                        player.sendMessage(Text.literal("Removed display item from command reward"), false)
+                        player.sendMessage(Text.literal("Changed item reward"), false)
+                    } else if (reward is CommandReward) {
+                        reward.serializableItemStack = serializable
+                        player.currentScreenHandler.setCursorStack(ItemStack.EMPTY)
+                        HuntsConfig.saveConfig()
+                        player.server.execute { CustomGui.refreshGui(player, generateEditLayout(reward, ops)) }
+                        player.sendMessage(Text.literal("Set display item for command reward"), false)
                     }
+                } else if (context.clickType == ClickType.RIGHT && reward is CommandReward) {
+                    // **Right-click to reset display item for CommandReward**
+                    val defaultStack = ItemStack(Items.PAPER)
+                    reward.serializableItemStack = SerializableItemStack.fromItemStack(defaultStack, ops)
+                    HuntsConfig.saveConfig()
+                    player.server.execute { CustomGui.refreshGui(player, generateEditLayout(reward, ops)) }
+                    player.sendMessage(Text.literal("Reset display item for command reward"), false)
                 }
             }
             Slots.EDIT_TITLE -> if (reward is CommandReward) {
@@ -744,7 +758,6 @@ object LootRewardEditGui {
                     player.sendMessage(Text.literal("No lore lines to remove"), false)
                 }
             }
-            // New branch for editing the command text
             Slots.EDIT_COMMAND -> if (reward is CommandReward) {
                 AnvilGuiManager.openAnvilGui(
                     player = player,
@@ -810,4 +823,3 @@ object LootRewardEditGui {
         return ItemStack(Items.GRAY_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
     }
 }
-

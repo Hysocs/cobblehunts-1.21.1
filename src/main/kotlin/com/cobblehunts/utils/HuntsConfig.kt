@@ -73,7 +73,7 @@ data class SerializableItemStack(val itemStackString: String) {
 
 /** Loot reward providing an item. */
 data class ItemReward(
-    val serializableItemStack: SerializableItemStack,
+    var serializableItemStack: SerializableItemStack,
     override var chance: Double
 ) : LootReward()
 
