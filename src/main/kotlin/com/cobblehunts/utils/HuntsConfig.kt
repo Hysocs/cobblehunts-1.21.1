@@ -126,6 +126,8 @@ data class HuntsConfigData(
     // New nested permissions section.
     var permissions: HuntPermissions = HuntPermissions(),
     // Spawn/loot pools moved to the bottom
+    var onlyAllowTurnInIfCapturedAfterHuntStarted: Boolean = true,
+    var lockGlobalHuntsOnCompletionForAllPlayers: Boolean = true,
     var globalPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
     var soloEasyPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
     var soloNormalPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
@@ -312,7 +314,9 @@ object HuntsConfig {
                 "soloMediumPoints" to "Points awarded for completing a solo medium hunt.",
                 "soloHardPoints" to "Points awarded for completing a solo hard hunt.",
                 "permissions" to "Permission settings for hunts. Note: 'permissionLevel' and 'opLevel' are part of permissions.",
-                "huntingBrushItem" to "Serialized item string for the Hunting Brush."
+                "huntingBrushItem" to "Serialized item string for the Hunting Brush.",
+                "onlyAllowTurnInIfCapturedAfterHuntStarted" to "Only allows you to turn in mons captured after starting a hunt",
+                "lockGlobalHuntsOnCompletionForAllPlayers" to "If true, once a global hunt is completed by any player, it is locked for all players until the next round."
             )
         )
     )

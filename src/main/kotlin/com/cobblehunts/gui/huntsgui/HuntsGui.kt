@@ -5,15 +5,19 @@ import com.cobblehunts.HuntInstance
 import com.cobblehunts.gui.TurnInGui
 import com.cobblehunts.utils.HuntsConfig
 import com.cobblehunts.utils.LeaderboardManager
+import com.cobblehunts.utils.LeaderboardManager.fetchMojangProfile
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties
 import com.cobblemon.mod.common.item.PokemonItem
 import com.everlastingutils.gui.CustomGui
 import com.everlastingutils.gui.InteractionContext
 import com.everlastingutils.gui.setCustomName
+import com.everlastingutils.utils.logDebug
 import com.google.gson.JsonElement
 import com.mojang.authlib.GameProfile
+import com.mojang.authlib.properties.Property
 import com.mojang.serialization.DynamicOps
 import com.mojang.serialization.JsonOps
+import kotlinx.serialization.json.*
 import net.minecraft.component.DataComponentTypes
 import net.minecraft.component.type.ProfileComponent
 import net.minecraft.item.ItemStack
@@ -25,6 +29,8 @@ import net.minecraft.text.Text
 import net.minecraft.util.ClickType
 import net.minecraft.util.Formatting
 import net.minecraft.util.Uuids
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.CompletableFuture
 import kotlin.math.min
 
@@ -114,7 +120,11 @@ object PlayerHuntsGui {
             val indicatorSlots = pokemonSlots.map { it - 9 }
             for (i in 0 until n) {
                 val hunt = hunts[i]
-                val isCompleted = data.completedGlobalHunts.contains(i)
+                val isCompleted = if (HuntsConfig.config.lockGlobalHuntsOnCompletionForAllPlayers) {
+                    CobbleHunts.globalCompletedHuntIndices.contains(i)
+                } else {
+                    data.completedGlobalHunts.contains(i)
+                }
                 layout[indicatorSlots[i]] = if (isCompleted) {
                     ItemStack(Items.RED_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
                 } else {
@@ -150,6 +160,7 @@ object PlayerHuntsGui {
             }
         }
     }
+
 
 
     /** Updates only the dynamic items (indicators and Pokémon) in the solo hunts GUI. */
@@ -254,6 +265,7 @@ object PlayerHuntsGui {
         generateLeaderboardLayout(player, layout)
     }
 
+
     private fun generateLeaderboardLayout(player: ServerPlayerEntity, layout: MutableList<ItemStack>) {
         val topPlayers = LeaderboardManager.getTopPlayers(16)
         val leaderboardSlots = listOf(13, 21, 22, 23, 29, 30, 31, 32, 33, 37, 38, 39, 40, 41, 42, 43)
@@ -262,58 +274,125 @@ object PlayerHuntsGui {
             val (playerName, points) = topPlayers[i]
             val slot = leaderboardSlots[i]
 
-            val defaultHead = ItemStack(Items.PLAYER_HEAD)
-            val offlineProfile = GameProfile(Uuids.getOfflinePlayerUuid(playerName), playerName)
-            val offlineProfileComponent = ProfileComponent(offlineProfile)
-            defaultHead.set(DataComponentTypes.PROFILE, offlineProfileComponent)
+            logDebug("DEBUG: Processing leaderboard entry for '$playerName' at slot $slot with $points points", "cobblehunts")
 
-            val rankText = Text.literal("Rank ").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }
-            val rankNumber = Text.literal("${i + 1}").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GOLD) }
-            val colon = Text.literal(": ").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }
-            val playerNameText = Text.literal(playerName).setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.AQUA) }
+            // Create a default head with an offline profile (fallback)
+            val defaultHead = ItemStack(Items.PLAYER_HEAD)
+            val offlineUUID = java.util.UUID.nameUUIDFromBytes("OfflinePlayer:$playerName".toByteArray())
+            logDebug("DEBUG: Computed offlineUUID for '$playerName': $offlineUUID", "cobblehunts")
+            val defaultOfflineProfile = GameProfile(offlineUUID, playerName)
+            defaultHead.set(DataComponentTypes.PROFILE, ProfileComponent(defaultOfflineProfile))
+
+            val rankText = Text.literal("Rank ")
+                .setStyle(Style.EMPTY.withItalic(false))
+                .styled { it.withColor(Formatting.GRAY) }
+            val rankNumber = Text.literal("${i + 1}")
+                .setStyle(Style.EMPTY.withItalic(false))
+                .styled { it.withColor(Formatting.GOLD) }
+            val colon = Text.literal(": ")
+                .setStyle(Style.EMPTY.withItalic(false))
+                .styled { it.withColor(Formatting.GRAY) }
+            val playerNameText = Text.literal(playerName)
+                .setStyle(Style.EMPTY.withItalic(false))
+                .styled { it.withColor(Formatting.AQUA) }
             val fullTitle = rankText.append(rankNumber).append(colon).append(playerNameText)
             defaultHead.setCustomName(fullTitle)
 
-            val pointsText = Text.literal("Points: ").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }
-            val pointsValue = Text.literal("$points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }
+            val pointsText = Text.literal("Points: ")
+                .setStyle(Style.EMPTY.withItalic(false))
+                .styled { it.withColor(Formatting.GRAY) }
+            val pointsValue = Text.literal("$points")
+                .setStyle(Style.EMPTY.withItalic(false))
+                .styled { it.withColor(Formatting.GREEN) }
             val loreLine = pointsText.append(pointsValue)
             CustomGui.setItemLore(defaultHead, listOf(loreLine))
 
             layout[slot] = defaultHead
 
+            // Update the head asynchronously
             CompletableFuture.supplyAsync {
-                player.server.userCache?.findByName(playerName)?.orElse(null)
-            }.thenAccept { profile ->
-                if (profile != null) {
-                    player.server.execute {
-                        val head = ItemStack(Items.PLAYER_HEAD)
-                        val profileComponent = ProfileComponent(profile)
-                        head.set(DataComponentTypes.PROFILE, profileComponent)
-                        head.setCustomName(fullTitle)
-                        CustomGui.setItemLore(head, listOf(loreLine))
-
-                        layout[slot] = head
-                        CustomGui.refreshGui(player, layout)
+                logDebug("DEBUG: Checking if player '$playerName' is online", "cobblehunts")
+                player.server.playerManager.getPlayer(playerName)
+            }.thenCompose { onlinePlayer ->
+                if (onlinePlayer != null) {
+                    logDebug("DEBUG: Player '$playerName' is online; using their gameProfile", "cobblehunts")
+                    CompletableFuture.completedFuture(onlinePlayer.gameProfile)
+                } else {
+                    logDebug("DEBUG: Player '$playerName' is offline; checking userCache", "cobblehunts")
+                    val cachedProfile = player.server.userCache?.findByName(playerName)?.orElse(null)
+                    if (cachedProfile != null && cachedProfile.properties.containsKey("textures") &&
+                        cachedProfile.properties["textures"]!!.isNotEmpty()
+                    ) {
+                        logDebug("DEBUG: Found valid cached profile for '$playerName' with textures", "cobblehunts")
+                        CompletableFuture.completedFuture(cachedProfile)
+                    } else {
+                        logDebug("DEBUG: No valid cached profile for '$playerName', fetching from Mojang API", "cobblehunts")
+                        // fetchMojangProfile now returns a CompletableFuture<GameProfile?>
+                        fetchMojangProfile(playerName).thenApply { mojangProfile ->
+                            if (mojangProfile != null && mojangProfile.properties.containsKey("textures") &&
+                                mojangProfile.properties["textures"]!!.isNotEmpty()
+                            ) {
+                                logDebug("DEBUG: Fetched valid Mojang profile for '$playerName'", "cobblehunts")
+                                mojangProfile
+                            } else {
+                                logDebug("DEBUG: Failed to fetch Mojang profile for '$playerName', using offline profile", "cobblehunts")
+                                GameProfile(java.util.UUID.nameUUIDFromBytes("OfflinePlayer:$playerName".toByteArray()), playerName)
+                            }
+                        }
                     }
+                }
+            }.thenAccept { finalProfile ->
+                player.server.execute {
+                    // Update the head using finalProfile...
+                    val head = ItemStack(Items.PLAYER_HEAD)
+                    head.set(DataComponentTypes.PROFILE, ProfileComponent(finalProfile))
+                    head.setCustomName(fullTitle)
+                    CustomGui.setItemLore(head, listOf(loreLine))
+                    layout[slot] = head
+                    CustomGui.refreshGui(player, layout)
                 }
             }
         }
 
         val infoHead = CustomGui.createPlayerHeadButton(
             textureName = "Info",
-            title = Text.literal("Points Information").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.WHITE) },
+            title = Text.literal("Points Information")
+                .setStyle(Style.EMPTY.withItalic(false))
+                .styled { it.withColor(Formatting.WHITE) },
             lore = listOf(
-                Text.literal("Complete hunts to earn points!").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) },
-                Text.literal("Global Hunt: ").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }
-                    .append(Text.literal("${HuntsConfig.config.globalPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }),
-                Text.literal("Easy Hunt: ").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }
-                    .append(Text.literal("${HuntsConfig.config.soloEasyPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }),
-                Text.literal("Normal Hunt: ").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }
-                    .append(Text.literal("${HuntsConfig.config.soloNormalPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }),
-                Text.literal("Medium Hunt: ").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }
-                    .append(Text.literal("${HuntsConfig.config.soloMediumPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }),
-                Text.literal("Hard Hunt: ").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }
-                    .append(Text.literal("${HuntsConfig.config.soloHardPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) })
+                Text.literal("Complete hunts to earn points!")
+                    .setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.GRAY) },
+                Text.literal("Global Hunt: ")
+                    .setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.GRAY) }
+                    .append(Text.literal("${HuntsConfig.config.globalPoints} points")
+                        .setStyle(Style.EMPTY.withItalic(false))
+                        .styled { it.withColor(Formatting.GREEN) }),
+                Text.literal("Easy Hunt: ")
+                    .setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.GRAY) }
+                    .append(Text.literal("${HuntsConfig.config.soloEasyPoints} points")
+                        .setStyle(Style.EMPTY.withItalic(false))
+                        .styled { it.withColor(Formatting.GREEN) }),
+                Text.literal("Normal Hunt: ")
+                    .setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.GRAY) }
+                    .append(Text.literal("${HuntsConfig.config.soloNormalPoints} points")
+                        .setStyle(Style.EMPTY.withItalic(false))
+                        .styled { it.withColor(Formatting.GREEN) }),
+                Text.literal("Medium Hunt: ")
+                    .setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.GRAY) }
+                    .append(Text.literal("${HuntsConfig.config.soloMediumPoints} points")
+                        .setStyle(Style.EMPTY.withItalic(false))
+                        .styled { it.withColor(Formatting.GREEN) }),
+                Text.literal("Hard Hunt: ")
+                    .setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.GRAY) }
+                    .append(Text.literal("${HuntsConfig.config.soloHardPoints} points")
+                        .setStyle(Style.EMPTY.withItalic(false))
+                        .styled { it.withColor(Formatting.GREEN) })
             ),
             textureValue = MainTextures.INFO
         )
@@ -321,13 +400,23 @@ object PlayerHuntsGui {
 
         layout[49] = CustomGui.createPlayerHeadButton(
             textureName = "Back",
-            title = Text.literal("Back").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.YELLOW) },
-            lore = listOf(Text.literal("Return to main menu").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }),
+            title = Text.literal("Back")
+                .setStyle(Style.EMPTY.withItalic(false))
+                .styled { it.withColor(Formatting.YELLOW) },
+            lore = listOf(
+                Text.literal("Return to main menu")
+                    .setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.GRAY) }
+            ),
             textureValue = MainTextures.BACK
         )
 
         CustomGui.refreshGui(player, layout)
     }
+
+
+
+
 
     private object GlobalSlots {
         const val BACK = 22
@@ -338,8 +427,10 @@ object PlayerHuntsGui {
     }
 
     fun openGlobalHuntsGui(player: ServerPlayerEntity) {
-        val layout = generateGlobalLayout(player)
-        dynamicGuiData[player] = Pair("global", layout.toMutableList())
+        val layout = generateGlobalLayout(player).toMutableList()
+        // Immediately update dynamic items to display current cooldown info
+        updateGlobalDynamicItems(player, layout)
+        dynamicGuiData[player] = Pair("global", layout)
         CustomGui.openGui(
             player,
             "Global Hunts",
@@ -349,6 +440,7 @@ object PlayerHuntsGui {
             { _ -> dynamicGuiData.remove(player) }
         )
     }
+
 
     private fun generateGlobalLayout(player: ServerPlayerEntity): List<ItemStack> {
         val layout = MutableList(27) { createFillerPane() }
@@ -408,7 +500,10 @@ object PlayerHuntsGui {
             val pokemonSlots = huntSlotMap[n] ?: listOf()
             if (slot in pokemonSlots) {
                 val index = pokemonSlots.indexOf(slot)
-                if (index < hunts.size && !data.completedGlobalHunts.contains(index)) {
+                // Check if global lock is enabled and hunt already completed globally.
+                if (index < hunts.size && !(HuntsConfig.config.lockGlobalHuntsOnCompletionForAllPlayers &&
+                            CobbleHunts.globalCompletedHuntIndices.contains(index))
+                ) {
                     if (context.clickType == ClickType.RIGHT) {
                         openLootPoolViewGui(player, "global")
                     } else if (context.clickType == ClickType.LEFT) {
@@ -421,6 +516,7 @@ object PlayerHuntsGui {
             openMainGui(player)
         }
     }
+
 
     private object SoloSlots {
         const val INDICATOR_EASY = 1

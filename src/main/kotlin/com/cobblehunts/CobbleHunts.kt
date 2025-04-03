@@ -9,6 +9,7 @@ import com.cobblemon.mod.common.pokemon.Pokemon
 import com.everlastingutils.command.CommandManager
 import com.everlastingutils.scheduling.SchedulerManager
 import com.everlastingutils.utils.LogDebug
+import com.mojang.authlib.GameProfile
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
@@ -27,6 +28,7 @@ object CobbleHunts : ModInitializer {
 	val removedPokemonCache = mutableMapOf<UUID, MutableList<Pokemon>>()
 	// Global hunt state variables
 	var globalHuntStates: List<HuntInstance> = emptyList()
+	val globalCompletedHuntIndices: MutableSet<Int> = mutableSetOf()
 	var sharedEndTime: Long? = null
 	var globalCooldownEnd: Long = 0
 
@@ -53,6 +55,7 @@ object CobbleHunts : ModInitializer {
 		HuntsConfig.initializeAndLoad()
 		updateDebugState()
 		HuntsCommands.registerCommands()
+		CatchingTracker.registerEvents()
 
 		// Start global hunts immediately and ensure no cooldown on startup
 		startGlobalHunt()
@@ -178,6 +181,7 @@ object CobbleHunts : ModInitializer {
 	}
 
 	private fun startGlobalHunt() {
+		globalCompletedHuntIndices.clear()
 		val numHunts = HuntsConfig.config.activeGlobalHuntsAtOnce
 		val endTime = System.currentTimeMillis() + HuntsConfig.config.globalTimeLimit * 1000L
 		val usedSpecies = mutableSetOf<String>()
@@ -188,7 +192,10 @@ object CobbleHunts : ModInitializer {
 				selectGlobalPokemon()
 			pokemon?.also { usedSpecies.add(it.species.lowercase()) }?.let { poke ->
 				LogDebug.debug("Selected Pokémon for global hunt #$i: ${poke.species}", MOD_ID)
-				HuntInstance(poke, null, null, emptyList(), selectGlobalReward(), endTime)
+				// Create the hunt instance and set the startTime
+				HuntInstance(poke, null, null, emptyList(), selectGlobalReward(), endTime).apply {
+					startTime = System.currentTimeMillis()
+				}
 			} ?: run {
 				logger.warn("No Pokémon available for global hunt #$i")
 				null
@@ -197,6 +204,7 @@ object CobbleHunts : ModInitializer {
 		sharedEndTime = endTime
 		playerData.values.forEach { it.completedGlobalHunts.clear() }
 	}
+
 
 	internal fun startGlobalCooldown() {
 		globalHuntStates = emptyList()
@@ -239,6 +247,8 @@ object CobbleHunts : ModInitializer {
 	fun activateMission(player: ServerPlayerEntity, difficulty: String, instance: HuntInstance) {
 		val data = getPlayerData(player)
 		data.activePokemon[difficulty] = instance
+		// Record the hunt start time if the config flag is enabled (or always record if you prefer)
+		instance.startTime = System.currentTimeMillis()
 		instance.endTime = when (difficulty) {
 			"easy"   -> HuntsConfig.config.soloEasyTimeLimit
 			"normal" -> HuntsConfig.config.soloNormalTimeLimit
@@ -248,6 +258,7 @@ object CobbleHunts : ModInitializer {
 		}.takeIf { it > 0 }?.let { System.currentTimeMillis() + it * 1000L }
 		data.previewPokemon.remove(difficulty)
 	}
+
 
 	fun getPlayerParty(player: ServerPlayerEntity): List<Pokemon> =
 		Cobblemon.storage.getParty(player).toList()
@@ -297,5 +308,8 @@ data class HuntInstance(
 	val requiredNature: String?,
 	val requiredIVs: List<String>,
 	val reward: LootReward?,
-	var endTime: Long? = null
+	var endTime: Long? = null,
+	var startTime: Long? = null
 )
+
+
