@@ -17,6 +17,7 @@ import net.minecraft.server.network.ServerPlayerEntity
 import org.slf4j.LoggerFactory
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlin.math.max
 import kotlin.random.Random
 
 object CobbleHunts : ModInitializer {
@@ -30,8 +31,22 @@ object CobbleHunts : ModInitializer {
 	var globalCooldownEnd: Long = 0
 
 	override fun onInitialize() {
-		if (!FabricLoader.getInstance().isModLoaded("everlastingutils")) {
-			logger.error("EverlastingUtils is required but not loaded!")
+		val loader = FabricLoader.getInstance()
+		val utilsContainer = loader.getModContainer("everlastingutils").orElse(null)
+		if (utilsContainer == null) {
+			logger.error(
+				"EverlastingUtils is required but not loaded! " +
+						"Please download from https://modrinth.com/mod/e-utils or join our Discord at https://discord.gg/KQyPEye7CT."
+			)
+			return
+		}
+		val utilsVersion = utilsContainer.metadata.version.friendlyString
+		if (!isVersionSufficient(utilsVersion, "1.0.8")) {
+			logger.error(
+				"EverlastingUtils version $utilsVersion is too low! You need 1.0.8+." +
+						" Please update from https://modrinth.com/mod/e-utils or join our Discord at https://discord.gg/KQyPEye7CT."
+			)
+
 			return
 		}
 		LogDebug.init(MOD_ID, false)
@@ -57,6 +72,19 @@ object CobbleHunts : ModInitializer {
 		}
 
 		logger.info("CobbleHunts initialized")
+	}
+
+	private fun isVersionSufficient(actual: String, required: String): Boolean {
+		val actualParts = actual.split(".").mapNotNull { it.toIntOrNull() }
+		val requiredParts = required.split(".").mapNotNull { it.toIntOrNull() }
+		val length = max(actualParts.size, requiredParts.size)
+		for (i in 0 until length) {
+			val a = if (i < actualParts.size) actualParts[i] else 0
+			val r = if (i < requiredParts.size) requiredParts[i] else 0
+			if (a < r) return false
+			if (a > r) return true
+		}
+		return true
 	}
 
 	fun updateDebugState() {
