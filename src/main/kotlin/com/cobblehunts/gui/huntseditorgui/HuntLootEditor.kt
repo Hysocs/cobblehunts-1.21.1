@@ -1,4 +1,4 @@
-package com.cobblehunts.gui
+package com.cobblehunts.gui.huntseditorgui
 
 import com.cobblehunts.utils.HuntsConfig
 import com.cobblehunts.utils.LootReward
@@ -10,11 +10,9 @@ import com.google.gson.JsonElement
 import com.mojang.serialization.DynamicOps
 import net.minecraft.component.DataComponentTypes
 import net.minecraft.component.type.LoreComponent
-import net.minecraft.enchantment.EnchantmentHelper
 import net.minecraft.item.ItemStack
 import net.minecraft.item.Items
 import net.minecraft.registry.RegistryOps
-import net.minecraft.registry.Registries
 import net.minecraft.registry.RegistryKeys
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.text.Text
@@ -323,7 +321,7 @@ object LootPoolSelectionGui {
     }
 
     private fun createFillerPane(): ItemStack {
-        return ItemStack(Items.GRAY_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
+        return ItemStack(Items.GRAY_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
     }
 }
 
@@ -335,6 +333,7 @@ object LootRewardEditGui {
         const val REMOVE_LORE = 3
         const val EDIT_COUNT = 4
         const val ADD_ENCHANT = 5
+        const val EDIT_COMMAND = 6 // New slot for editing command
         const val DECREASE_LARGE = 19
         const val DECREASE_MEDIUM = 20
         const val DECREASE_SMALL = 21
@@ -351,6 +350,8 @@ object LootRewardEditGui {
         const val BACK = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzI0MzE5MTFmNDE3OGI0ZDJiNDEzYWE3ZjVjNzhhZTQ0NDdmZTkyNDY5NDNjMzFkZjMxMTYzYzBlMDQzZTBkNiJ9fX0="
         const val EDIT_COUNT = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7ImV4dCI6ImFkZGl0X2NvdW50In19"
         const val ADD_ENCHANT = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7ImV4dCI6ImFkZGVkX2VuY2hhbnQifX0="
+        // New texture for Edit Command button
+        const val EDIT_COMMAND = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZWRpdF9jb21tYW5kIn19fQ=="
     }
 
     fun openGui(player: ServerPlayerEntity, type: String, tier: String, reward: LootReward) {
@@ -372,10 +373,18 @@ object LootRewardEditGui {
             }
             is CommandReward -> {
                 val displayItem = reward.serializableItemStack?.toItemStack(ops)
-                    ?: ItemStack(Items.WHITE_STAINED_GLASS_PANE).apply {
-                        setCustomName(Text.literal("Set Display Item").styled { it.withColor(Formatting.GRAY) })
-                        CustomGui.setItemLore(this, listOf(Text.literal("Drop an item to change the display item.").styled { it.withColor(Formatting.GRAY) }))
+                    ?: ItemStack(Items.COMMAND_BLOCK).apply {
+                        setCustomName(Text.literal("Command Reward").styled { it.withColor(Formatting.GOLD) })
                     }
+                val lore = mutableListOf<Text>()
+                lore.add(Text.literal("Command: ").styled { it.withColor(Formatting.GRAY) }
+                    .append(Text.literal("/${reward.command}").styled { it.withColor(Formatting.WHITE) }))
+                lore.add(Text.literal("Chance: ").styled { it.withColor(Formatting.GRAY) }
+                    .append(Text.literal("%.1f%%".format(reward.chance * 100)).styled { it.withColor(Formatting.RED) }))
+                lore.add(Text.literal(""))
+                lore.add(Text.literal("Left-click to edit").styled { it.withColor(Formatting.YELLOW) })
+                lore.add(Text.literal("Right-click to remove").styled { it.withColor(Formatting.YELLOW) })
+                CustomGui.setItemLore(displayItem, lore)
                 layout[Slots.ITEM_DISPLAY] = displayItem.copy()
                 layout[Slots.EDIT_TITLE] = CustomGui.createPlayerHeadButton(
                     textureName = "EditTitle",
@@ -409,6 +418,13 @@ object LootRewardEditGui {
                         Text.literal("Right-click to toggle enchant glint").styled { it.withColor(Formatting.YELLOW) }
                     ),
                     textureValue = Textures.ADD_ENCHANT
+                )
+                // New Edit Command button for changing the command text
+                layout[Slots.EDIT_COMMAND] = CustomGui.createPlayerHeadButton(
+                    textureName = "EditCommand",
+                    title = Text.literal("Edit Command").styled { it.withColor(Formatting.AQUA) },
+                    lore = listOf(Text.literal("Click to edit the command").styled { it.withColor(Formatting.YELLOW) }),
+                    textureValue = Textures.EDIT_COMMAND
                 )
             }
         }
@@ -728,6 +744,46 @@ object LootRewardEditGui {
                     player.sendMessage(Text.literal("No lore lines to remove"), false)
                 }
             }
+            // New branch for editing the command text
+            Slots.EDIT_COMMAND -> if (reward is CommandReward) {
+                AnvilGuiManager.openAnvilGui(
+                    player = player,
+                    id = "edit_command_text",
+                    title = "Edit Command",
+                    initialText = reward.command,
+                    leftItem = LootPoolSelectionGui.createCancelButton(),
+                    rightItem = ItemStack(Items.PAPER),
+                    resultItem = LootPoolSelectionGui.createPlaceholderOutput("Enter new command"),
+                    onLeftClick = { _ -> player.closeHandledScreen() },
+                    onRightClick = null,
+                    onResultClick = { ctx ->
+                        val newCommand = ctx.handler.currentText.trim()
+                        if (newCommand.isNotEmpty()) {
+                            reward.command = newCommand
+                            HuntsConfig.saveConfig()
+                            player.sendMessage(Text.literal("Command updated to: /$newCommand"), false)
+                            player.closeHandledScreen()
+                            player.server.execute { openGui(player, type, tier, reward) }
+                        } else {
+                            player.sendMessage(Text.literal("Command cannot be empty"), false)
+                        }
+                    },
+                    onTextChange = { text ->
+                        val handler = player.currentScreenHandler as? FullyModularAnvilScreenHandler
+                        if (text.isNotEmpty()) {
+                            val setCommandButton = CustomGui.createPlayerHeadButton(
+                                textureName = "SetCommand",
+                                title = Text.literal("Set Command: ").styled { it.withColor(Formatting.AQUA) }
+                                    .append(Text.literal("/$text").styled { it.withColor(Formatting.WHITE) }),
+                                lore = listOf(Text.literal("Click to set command").styled { it.withColor(Formatting.GRAY) }),
+                                textureValue = Textures.EDIT_COMMAND
+                            )
+                            handler?.updateSlot(2, setCommandButton)
+                        }
+                    },
+                    onClose = { HuntsConfig.saveConfig() }
+                )
+            }
             Slots.BACK -> {
                 HuntsConfig.saveConfig()
                 LootPoolSelectionGui.openGui(player, type, tier)
@@ -751,6 +807,7 @@ object LootRewardEditGui {
     }
 
     private fun createFillerPane(): ItemStack {
-        return ItemStack(Items.GRAY_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
+        return ItemStack(Items.GRAY_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
     }
 }
+

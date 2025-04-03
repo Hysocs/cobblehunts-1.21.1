@@ -2,7 +2,7 @@ package com.cobblehunts.gui
 
 import com.cobblehunts.CobbleHunts
 import com.cobblehunts.HuntInstance
-import com.cobblehunts.gui.PlayerHuntsGui
+import com.cobblehunts.gui.huntsgui.PlayerHuntsGui
 import com.cobblehunts.utils.*
 import com.cobblemon.mod.common.Cobblemon
 import com.cobblemon.mod.common.api.pokemon.stats.Stats
@@ -14,6 +14,7 @@ import com.everlastingutils.gui.setCustomName
 import net.minecraft.item.ItemStack
 import net.minecraft.item.Items
 import net.minecraft.server.network.ServerPlayerEntity
+import net.minecraft.text.Style
 import net.minecraft.text.Text
 import net.minecraft.util.Formatting
 import com.mojang.serialization.JsonOps
@@ -34,18 +35,18 @@ object TurnInGui {
         const val BACK = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzI0MzE5MTFmNDE3OGI0ZDJiNDEzYWE3ZjVjNzhhZTQ0NDdmZTkyNDY5NDNjMzFkZjMxMTYzYzBlMDQzZTBkNiJ9fX0="
     }
 
-    fun openTurnInGui(player: ServerPlayerEntity, rarity: String) {
+    fun openTurnInGui(player: ServerPlayerEntity, rarity: String, huntIndex: Int? = null) {
         val selectedForTurnIn = mutableListOf<Pokemon?>(null, null, null, null, null, null)
         CustomGui.openGui(
             player,
-            "Turn In $rarity Hunt",
-            generateTurnInLayout(player, selectedForTurnIn, rarity),
-            { context -> handleTurnInInteraction(context, player, selectedForTurnIn, rarity) },
+            "Turn In $rarity Hunt" + (huntIndex?.let { " #$it" } ?: ""),
+            generateTurnInLayout(player, selectedForTurnIn, rarity, huntIndex),
+            { context -> handleTurnInInteraction(context, player, selectedForTurnIn, rarity, huntIndex) },
             { /* Cleanup can be added here if needed */ }
         )
     }
 
-    private fun generateTurnInLayout(player: ServerPlayerEntity, selectedForTurnIn: MutableList<Pokemon?>, rarity: String): List<ItemStack> {
+    private fun generateTurnInLayout(player: ServerPlayerEntity, selectedForTurnIn: MutableList<Pokemon?>, rarity: String, huntIndex: Int?): List<ItemStack> {
         val layout = MutableList(54) { createFillerPane() }
 
         val party = CobbleHunts.getPlayerParty(player)
@@ -61,13 +62,13 @@ object TurnInGui {
                 }
             } else {
                 layout[slot] = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE).apply {
-                    setCustomName(Text.literal(" "))
+                    setCustomName(Text.literal(""))
                 }
             }
         }
 
         val activeHunt = if (rarity == "global") {
-            CobbleHunts.globalHuntState?.instance
+            huntIndex?.let { CobbleHunts.globalHuntStates.getOrNull(it) }
         } else {
             CobbleHunts.getPlayerData(player).activePokemon[rarity]
         }
@@ -108,7 +109,7 @@ object TurnInGui {
                 }
             } else {
                 layout[slot] = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE).apply {
-                    setCustomName(Text.literal(" "))
+                    setCustomName(Text.literal(""))
                 }
             }
         }
@@ -119,7 +120,7 @@ object TurnInGui {
                 layout[slot] = createPokemonItem(selectedPokemon)
             } else {
                 layout[slot] = ItemStack(Items.RED_STAINED_GLASS_PANE).apply {
-                    setCustomName(Text.literal(" "))
+                    setCustomName(Text.literal(""))
                 }
             }
         }
@@ -136,7 +137,7 @@ object TurnInGui {
                 )
             } else {
                 layout[slot] = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE).apply {
-                    setCustomName(Text.literal(" "))
+                    setCustomName(Text.literal(""))
                 }
             }
         }
@@ -166,14 +167,20 @@ object TurnInGui {
         return layout
     }
 
-    private fun handleTurnInInteraction(context: InteractionContext, player: ServerPlayerEntity, selectedForTurnIn: MutableList<Pokemon?>, rarity: String) {
+    private fun handleTurnInInteraction(
+        context: InteractionContext,
+        player: ServerPlayerEntity,
+        selectedForTurnIn: MutableList<Pokemon?>,
+        rarity: String,
+        huntIndex: Int?
+    ) {
         val slot = context.slotIndex
         if (slot in turnInButtonSlots) {
             val index = turnInButtonSlots.indexOf(slot)
             val party = CobbleHunts.getPlayerParty(player)
             val pokemon = party.getOrNull(index)
             val activeHunt = if (rarity == "global") {
-                CobbleHunts.globalHuntState?.instance
+                huntIndex?.let { CobbleHunts.globalHuntStates.getOrNull(it) }
             } else {
                 CobbleHunts.getPlayerData(player).activePokemon[rarity]
             }
@@ -183,10 +190,11 @@ object TurnInGui {
                     if (mismatchReasons.isEmpty()) {
                         selectedForTurnIn[index] = pokemon
                         player.server.execute {
-                            CustomGui.refreshGui(player, generateTurnInLayout(player, selectedForTurnIn, rarity))
+                            CustomGui.refreshGui(player, generateTurnInLayout(player, selectedForTurnIn, rarity, huntIndex))
                         }
                     } else {
-                        val message = Text.literal("This Pokémon is missing the following requirements:").styled { it.withColor(Formatting.RED) }
+                        val message = Text.literal("This Pokémon is missing the following requirements:")
+                            .styled { it.withColor(Formatting.RED) }
                         mismatchReasons.forEach { reason ->
                             message.append("\n- $reason")
                         }
@@ -201,23 +209,36 @@ object TurnInGui {
             if (selectedForTurnIn[index] != null) {
                 selectedForTurnIn[index] = null
                 player.server.execute {
-                    CustomGui.refreshGui(player, generateTurnInLayout(player, selectedForTurnIn, rarity))
+                    CustomGui.refreshGui(player, generateTurnInLayout(player, selectedForTurnIn, rarity, huntIndex))
                 }
             }
         } else if (slot == 22) {
             if (selectedForTurnIn.count { it != null } == 1) {
                 val selectedPokemon = selectedForTurnIn.first { it != null }
+                // Re-fetch the player's party for a security check.
                 val party = Cobblemon.storage.getParty(player)
-                if (selectedPokemon != null) {
-                    println("Removing Pokémon from party: ${selectedPokemon.species.name}")
+                if (selectedPokemon != null && party.contains(selectedPokemon)) {
+                    println("Security check passed: Removing Pokémon ${selectedPokemon.species.name} from party.")
+                    // Cache the removed Pokémon for potential revert.
+                    CobbleHunts.removedPokemonCache.getOrPut(player.uuid) { mutableListOf() }.add(selectedPokemon)
+                    // Remove the Pokémon from the party.
                     party.remove(selectedPokemon)
+                } else {
+                    println("Security check failed: Pokémon ${selectedPokemon?.species?.name ?: "null"} not found in party!")
+                    player.sendMessage(
+                        Text.literal("Security check failed: Pokémon not found in your party.")
+                            .setStyle(Style.EMPTY.withItalic(false))
+                            .styled { it.withColor(Formatting.RED) },
+                        false
+                    )
+                    return
                 }
 
                 val data = CobbleHunts.getPlayerData(player)
                 val activeHunt = if (rarity == "global") {
-                    CobbleHunts.globalHuntState?.instance
+                    huntIndex?.let { CobbleHunts.globalHuntStates.getOrNull(it) }
                 } else {
-                    data.activePokemon[rarity]
+                    CobbleHunts.getPlayerData(player).activePokemon[rarity]
                 }
                 if (activeHunt != null && (activeHunt.endTime == null || System.currentTimeMillis() < activeHunt.endTime!!)) {
                     // Award leaderboard points
@@ -233,7 +254,8 @@ object TurnInGui {
                         println("Awarding $points points to ${player.name.string}")
                         LeaderboardManager.addPoints(player.name.string, points)
                         player.sendMessage(
-                            Text.literal("You earned $points Leaderboard points!").styled { it.withColor(Formatting.GOLD) },
+                            Text.literal("You earned $points Leaderboard points!")
+                                .styled { it.withColor(Formatting.GOLD) },
                             false
                         )
                     }
@@ -258,7 +280,8 @@ object TurnInGui {
                                 println("Giving item: ${itemStack.item.name.string}")
                                 player.inventory.offerOrDrop(itemStack)
                                 player.sendMessage(
-                                    Text.literal("You received ${itemStack.name.string}!").styled { it.withColor(Formatting.GREEN) },
+                                    Text.literal("You received ${itemStack.name.string}!")
+                                        .styled { it.withColor(Formatting.GREEN) },
                                     false
                                 )
                             }
@@ -270,13 +293,15 @@ object TurnInGui {
                                     player.server.commandManager.executeWithPrefix(player.server.commandSource, commandToExecute)
                                     println("Command executed successfully: $commandToExecute")
                                     player.sendMessage(
-                                        Text.literal("Hunt completed! Check your inventory for rewards.").styled { it.withColor(Formatting.GREEN) },
+                                        Text.literal("Hunt completed!")
+                                            .styled { it.withColor(Formatting.GREEN) },
                                         false
                                     )
                                 } catch (e: Exception) {
                                     println("Command execution failed for: $commandToExecute with error: ${e.message}")
                                     player.sendMessage(
-                                        Text.literal("Failed to execute reward command: ${e.message}").styled { it.withColor(Formatting.RED) },
+                                        Text.literal("Failed to execute reward command: ${e.message}")
+                                            .styled { it.withColor(Formatting.RED) },
                                         false
                                     )
                                 }
@@ -285,16 +310,18 @@ object TurnInGui {
                     } else {
                         println("No reward selected from loot pool for $rarity")
                         player.sendMessage(
-                            Text.literal("Hunt completed, but no reward was available.").styled { it.withColor(Formatting.YELLOW) },
+                            Text.literal("Hunt completed, but no reward was available.")
+                                .styled { it.withColor(Formatting.YELLOW) },
                             false
                         )
                     }
 
                     // Complete the hunt
-                    println("Completing hunt for rarity: $rarity")
-                    if (rarity == "global") {
-                        CobbleHunts.startGlobalCooldown()
-                    } else {
+                    println("Completing hunt for rarity: $rarity" + (huntIndex?.let { " #$it" } ?: ""))
+                    if (rarity == "global" && huntIndex != null) {
+                        data.completedGlobalHunts.add(huntIndex)
+                        println("Marked global hunt #$huntIndex as completed for ${player.name.string}")
+                    } else if (rarity != "global") {
                         data.activePokemon.remove(rarity)
                         val cooldownTime = when (rarity) {
                             "easy" -> HuntsConfig.config.soloEasyCooldown
@@ -310,10 +337,14 @@ object TurnInGui {
                     }
 
                     player.closeHandledScreen()
+                    if (rarity == "global") {
+                        PlayerHuntsGui.openGlobalHuntsGui(player)
+                    }
                 } else {
-                    println("Hunt expired or inactive for rarity: $rarity")
+                    println("Hunt expired or inactive for rarity: $rarity" + (huntIndex?.let { " #$it" } ?: ""))
                     player.sendMessage(
-                        Text.literal("The hunt has expired or is no longer active.").styled { it.withColor(Formatting.RED) },
+                        Text.literal("The hunt has expired or is no longer active.")
+                            .styled { it.withColor(Formatting.RED) },
                         false
                     )
                     player.closeHandledScreen()
@@ -403,6 +434,6 @@ object TurnInGui {
     }
 
     private fun createFillerPane(): ItemStack {
-        return ItemStack(Items.GRAY_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
+        return ItemStack(Items.GRAY_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
     }
 }

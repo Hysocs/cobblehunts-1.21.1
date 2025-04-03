@@ -1,4 +1,4 @@
-package com.cobblehunts.gui
+package com.cobblehunts.gui.huntseditorgui
 
 import com.cobblehunts.utils.HuntsConfig
 import com.cobblehunts.utils.HuntPokemonEntry
@@ -33,7 +33,9 @@ enum class Difficulty(val displayName: String, val texture: String, val color: F
 }
 
 object GuiHelpers {
-    fun createFillerPane(): ItemStack = ItemStack(Items.GRAY_STAINED_GLASS_PANE).apply { setCustomName(Text.literal(" ")) }
+    fun createFillerPane(): ItemStack = ItemStack(Items.GRAY_STAINED_GLASS_PANE).apply {
+        setCustomName(Text.literal(""))
+    }
 
     fun createPlayerHeadButton(name: String, title: Text, lore: List<Text>, texture: String): ItemStack =
         CustomGui.createPlayerHeadButton(name, title, lore, texture)
@@ -99,7 +101,9 @@ object HuntsEditorMainGui {
         layout[Slots.SETTINGS] = GuiHelpers.createPlayerHeadButton(
             "Settings",
             Text.literal("Hunts Global Settings").styled { it.withColor(Formatting.YELLOW) },
-            listOf(Text.literal("Click to edit global timers").styled { it.withColor(Formatting.YELLOW).withItalic(false) }),
+            listOf(
+                Text.literal("Click to edit global timers")
+                    .styled { it.withColor(Formatting.YELLOW).withItalic(false) }),
             Textures.SETTINGS
         )
         return layout
@@ -107,7 +111,11 @@ object HuntsEditorMainGui {
 
     private fun handleMainInteraction(context: InteractionContext, player: ServerPlayerEntity) {
         when (context.slotIndex) {
-            Slots.GLOBAL -> if (context.clickType == ClickType.LEFT) HuntsPokemonSelectionGui.openGui(player, "global", "global")
+            Slots.GLOBAL -> if (context.clickType == ClickType.LEFT) HuntsPokemonSelectionGui.openGui(
+                player,
+                "global",
+                "global"
+            )
             else if (context.clickType == ClickType.RIGHT) LootPoolSelectionGui.openGui(player, "global", "global")
             Slots.SOLO -> HuntsTierSelectionGui.openGui(player, "solo")
             Slots.SETTINGS -> HuntsGlobalSettingsGui.openGui(player)
@@ -154,8 +162,16 @@ object HuntsTierSelectionGui {
                     Slots.HARD -> Difficulty.HARD
                     else -> return
                 }
-                if (context.clickType == ClickType.LEFT) HuntsPokemonSelectionGui.openGui(player, type, difficulty.name.lowercase())
-                else if (context.clickType == ClickType.RIGHT) LootPoolSelectionGui.openGui(player, type, difficulty.name.lowercase())
+                if (context.clickType == ClickType.LEFT) HuntsPokemonSelectionGui.openGui(
+                    player,
+                    type,
+                    difficulty.name.lowercase()
+                )
+                else if (context.clickType == ClickType.RIGHT) LootPoolSelectionGui.openGui(
+                    player,
+                    type,
+                    difficulty.name.lowercase()
+                )
             }
             Slots.BACK -> HuntsEditorMainGui.openGui(player)
         }
@@ -235,7 +251,10 @@ object HuntsPokemonSelectionGui {
         val searchTerm = playerSearchTerms[player] ?: ""
         when (context.slotIndex) {
             Slots.PREV_PAGE -> if (page > 0) { page--; playerPages[player] = page; CustomGui.refreshGui(player, generateSelectionLayout(type, tier, page, sortMethod, searchTerm)) }
-            Slots.BACK -> if (type == "global") HuntsEditorMainGui.openGui(player) else HuntsTierSelectionGui.openGui(player, type)
+            Slots.BACK -> if (type == "global") HuntsEditorMainGui.openGui(player) else HuntsTierSelectionGui.openGui(
+                player,
+                type
+            )
             Slots.SORT_METHOD -> when (context.clickType) {
                 ClickType.LEFT -> {
                     val newSortMethod = when (sortMethod) {
@@ -270,10 +289,14 @@ object HuntsPokemonSelectionGui {
                     } else if (context.clickType == ClickType.LEFT) {
                         if (selectedPokemon.any { it.species == entry.species && it.form == entry.form && it.aspects == entry.aspects }) {
                             selectedPokemon.removeIf { it.species == entry.species && it.form == entry.form && it.aspects == entry.aspects }
-                            player.sendMessage(Text.literal("Removed ").styled { it.withColor(Formatting.GRAY) }.append(Text.literal(variant.species.name).styled { it.withColor(Formatting.WHITE) }).append(Text.literal(" from $type hunts").styled { it.withColor(Formatting.GRAY) }), false)
+                            player.sendMessage(Text.literal("Removed ").styled { it.withColor(Formatting.GRAY) }
+                                .append(Text.literal(variant.species.name).styled { it.withColor(Formatting.WHITE) })
+                                .append(Text.literal(" from $type hunts").styled { it.withColor(Formatting.GRAY) }), false)
                         } else {
                             selectedPokemon.add(entry)
-                            player.sendMessage(Text.literal("Added ").styled { it.withColor(Formatting.GRAY) }.append(Text.literal(variant.species.name).styled { it.withColor(Formatting.WHITE) }).append(Text.literal(" to $type hunts").styled { it.withColor(Formatting.GRAY) }), false)
+                            player.sendMessage(Text.literal("Added ").styled { it.withColor(Formatting.GRAY) }
+                                .append(Text.literal(variant.species.name).styled { it.withColor(Formatting.WHITE) })
+                                .append(Text.literal(" to $type hunts").styled { it.withColor(Formatting.GRAY) }), false)
                         }
                         HuntsConfig.saveConfig()
                         CustomGui.refreshGui(player, generateSelectionLayout(type, tier, page, sortMethod, searchTerm))
@@ -293,7 +316,7 @@ object HuntsPokemonSelectionGui {
     }
 
     private fun createSelectedPokemonItem(tier: String, variant: SpeciesFormVariant, entry: HuntPokemonEntry): ItemStack {
-        val aspectsString = variant.additionalAspects.joinToString(" ") { "aspect=$it" }
+        val aspectsString = variant.additionalAspects.joinToString("") { "aspect=$it" }
         val formString = if (variant.form.name != "Standard") " form=${variant.form.name}" else ""
         val properties = PokemonProperties.parse("${variant.species.showdownId()}$formString $aspectsString")
         val pokemon = properties.create()
@@ -319,7 +342,7 @@ object HuntsPokemonSelectionGui {
     }
 
     private fun createUnselectedPokemonItem(variant: SpeciesFormVariant): ItemStack {
-        val aspectsString = variant.additionalAspects.joinToString(" ") { "aspect=$it" }
+        val aspectsString = variant.additionalAspects.joinToString("") { "aspect=$it" }
         val formString = if (variant.form.name != "Standard") " form=${variant.form.name}" else ""
         val properties = PokemonProperties.parse("${variant.species.showdownId()}$formString $aspectsString")
         val pokemon = properties.create()
@@ -368,7 +391,10 @@ object HuntsPokemonSelectionGui {
         val speciesSpecificAspects = mutableSetOf<String>()
         species.forms.forEach { form -> form.aspects.forEach { speciesSpecificAspects.add(it) } }
         SpeciesFeatures.getFeaturesFor(species).filterIsInstance<ChoiceSpeciesFeatureProvider>().forEach { provider -> provider.getAllAspects().forEach { speciesSpecificAspects.add(it) } }
-        for (aspect in speciesSpecificAspects) { aspectSets.add(setOf(aspect)); aspectSets.add(setOf(aspect, "shiny")) }
+        for (aspect in speciesSpecificAspects) {
+            aspectSets.add(setOf(aspect));
+            aspectSets.add(setOf(aspect, "shiny"))
+        }
         return aspectSets.distinct()
     }
 
@@ -442,8 +468,10 @@ object HuntsPokemonSelectionGui {
                     2,
                     GuiHelpers.createPlayerHeadButton(
                         "Search",
-                        Text.literal("Search: ").styled { it.withColor(Formatting.GREEN) }.append(Text.literal(text).styled { it.withColor(Formatting.AQUA) }),
-                        listOf(Text.literal("Click to search").styled { it.withColor(Formatting.GRAY).withItalic(false) }),
+                        Text.literal("Search: ").styled { it.withColor(Formatting.GREEN) }
+                            .append(Text.literal(text).styled { it.withColor(Formatting.AQUA) }),
+                        listOf(
+                            Text.literal("Click to search").styled { it.withColor(Formatting.GRAY).withItalic(false) }),
                         Textures.SORT_METHOD
                     )
                 )
@@ -531,9 +559,11 @@ object HuntsPokemonEditGui {
             layout[Slots.TOGGLE_GENDER] = GuiHelpers.createPlayerHeadButton(
                 "ToggleGender",
                 Text.literal("Gender: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
-                    .append(Text.literal(genderDisplay).styled { it.withColor(Formatting.LIGHT_PURPLE).withItalic(false) }),
+                    .append(
+                        Text.literal(genderDisplay).styled { it.withColor(Formatting.LIGHT_PURPLE).withItalic(false) }),
                 listOf(
-                    Text.literal("Click to cycle gender (Any -> Male -> Female)").styled { it.withColor(Formatting.YELLOW).withItalic(false) }
+                    Text.literal("Click to cycle gender (Any -> Male -> Female)")
+                        .styled { it.withColor(Formatting.YELLOW).withItalic(false) }
                 ),
                 Textures.TOGGLE_GENDER
             )
@@ -559,7 +589,8 @@ object HuntsPokemonEditGui {
                 Text.literal("Min Perfect IVs: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
                     .append(Text.literal(ivDisplay).styled { it.withColor(Formatting.GOLD).withItalic(false) }),
                 listOf(
-                    Text.literal("Click to cycle minimum perfect IVs (Any -> 1 -> 2 -> 3)").styled { it.withColor(Formatting.YELLOW).withItalic(false) }
+                    Text.literal("Click to cycle minimum perfect IVs (Any -> 1 -> 2 -> 3)")
+                        .styled { it.withColor(Formatting.YELLOW).withItalic(false) }
                 ),
                 Textures.TOGGLE_IV
             )
@@ -640,7 +671,7 @@ object HuntsPokemonEditGui {
         val propsParts = mutableListOf(entry.species)
         entry.form?.let { propsParts.add("form=$it") }
         entry.aspects.forEach { propsParts.add("aspect=$it") }
-        val properties = PokemonProperties.parse(propsParts.joinToString(" "))
+        val properties = PokemonProperties.parse(propsParts.joinToString(""))
         val pokemon = properties.create()
         val item = PokemonItem.from(pokemon)
         val speciesName = PokemonSpecies.getByName(entry.species)?.name ?: entry.species.replaceFirstChar { it.titlecase() }
@@ -687,22 +718,31 @@ object HuntsGlobalSettingsGui {
 
     private object Slots {
         const val TOGGLE_MODE = 4
+        const val BACK = 49
+        // Solo Easy (Row 1, Left, shifted right)
         const val SOLO_EASY_DECREASE = 10
         const val SOLO_EASY_DISPLAY = 11
         const val SOLO_EASY_INCREASE = 12
-        const val SOLO_NORMAL_DECREASE = 13
-        const val SOLO_NORMAL_DISPLAY = 14
-        const val SOLO_NORMAL_INCREASE = 15
-        const val SOLO_MEDIUM_DECREASE = 19
-        const val SOLO_MEDIUM_DISPLAY = 20
-        const val SOLO_MEDIUM_INCREASE = 21
-        const val SOLO_HARD_DECREASE = 22
-        const val SOLO_HARD_DISPLAY = 23
-        const val SOLO_HARD_INCREASE = 24
+        // Solo Hard (Row 1, Right, unchanged)
+        const val SOLO_HARD_DECREASE = 14
+        const val SOLO_HARD_DISPLAY = 15
+        const val SOLO_HARD_INCREASE = 16
+        // Solo Normal (Row 2, Left, shifted right)
+        const val SOLO_NORMAL_DECREASE = 19
+        const val SOLO_NORMAL_DISPLAY = 20
+        const val SOLO_NORMAL_INCREASE = 21
+        // Solo Medium (Row 2, Right, unchanged)
+        const val SOLO_MEDIUM_DECREASE = 23
+        const val SOLO_MEDIUM_DISPLAY = 24
+        const val SOLO_MEDIUM_INCREASE = 25
+        // Global (Row 3, Left, shifted right)
         const val GLOBAL_DECREASE = 28
         const val GLOBAL_DISPLAY = 29
         const val GLOBAL_INCREASE = 30
-        const val BACK = 49
+        // Active Global Hunts (Row 3, Right, unchanged)
+        const val ACTIVE_GLOBAL_DECREASE = 32
+        const val ACTIVE_GLOBAL_DISPLAY = 33
+        const val ACTIVE_GLOBAL_INCREASE = 34
     }
 
     private object Textures {
@@ -719,13 +759,24 @@ object HuntsGlobalSettingsGui {
     private fun generateLayout(player: ServerPlayerEntity): List<ItemStack> {
         val mode = playerTimerModes[player] ?: TimerMode.COOLDOWN
         val layout = MutableList(54) { GuiHelpers.createFillerPane() }
-        layout[Slots.TOGGLE_MODE] = createToggleButton(mode)
+
+        // Center glass column (unchanged)
+        for (row in 1..4) {
+            val slot = row * 9 + 4 // Slots 13, 22, 31, 40
+            layout[slot] = ItemStack(Items.WHITE_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
+        }
+
+        // Place sections with updated slots
         addTimerSection(layout, "Solo Easy", "soloEasy", mode, Slots.SOLO_EASY_DECREASE, Slots.SOLO_EASY_DISPLAY, Slots.SOLO_EASY_INCREASE)
+        addTimerSection(layout, "Solo Hard", "soloHard", mode, Slots.SOLO_HARD_DECREASE, Slots.SOLO_HARD_DISPLAY, Slots.SOLO_HARD_INCREASE)
         addTimerSection(layout, "Solo Normal", "soloNormal", mode, Slots.SOLO_NORMAL_DECREASE, Slots.SOLO_NORMAL_DISPLAY, Slots.SOLO_NORMAL_INCREASE)
         addTimerSection(layout, "Solo Medium", "soloMedium", mode, Slots.SOLO_MEDIUM_DECREASE, Slots.SOLO_MEDIUM_DISPLAY, Slots.SOLO_MEDIUM_INCREASE)
-        addTimerSection(layout, "Solo Hard", "soloHard", mode, Slots.SOLO_HARD_DECREASE, Slots.SOLO_HARD_DISPLAY, Slots.SOLO_HARD_INCREASE)
         addTimerSection(layout, "Global", "global", mode, Slots.GLOBAL_DECREASE, Slots.GLOBAL_DISPLAY, Slots.GLOBAL_INCREASE)
+        addActiveGlobalHuntsSection(layout, Slots.ACTIVE_GLOBAL_DECREASE, Slots.ACTIVE_GLOBAL_DISPLAY, Slots.ACTIVE_GLOBAL_INCREASE)
+
+        layout[Slots.TOGGLE_MODE] = createToggleButton(mode)
         layout[Slots.BACK] = GuiHelpers.createBackButton("Return to main menu")
+
         return layout
     }
 
@@ -770,7 +821,26 @@ object HuntsGlobalSettingsGui {
                 )
             )
         }
-        layout[increaseSlot] = createAdjustmentButton("Increase", 1, 10, Textures.INCREASE, label, currentValue)
+        // For global timer adjustments, only process left-click
+        if (configKey == "global") {
+            layout[increaseSlot] = createAdjustmentButton("Increase", 1, 0, Textures.INCREASE, label, currentValue)
+        } else {
+            layout[increaseSlot] = createAdjustmentButton("Increase", 1, 10, Textures.INCREASE, label, currentValue)
+        }
+    }
+
+    private fun addActiveGlobalHuntsSection(layout: MutableList<ItemStack>, decreaseSlot: Int, displaySlot: Int, increaseSlot: Int) {
+        val label = "Active Global Hunts"
+        val currentValue = HuntsConfig.config.activeGlobalHuntsAtOnce
+        layout[decreaseSlot] = createAdjustmentButton("Decrease", -1, 0, Textures.DECREASE, label, currentValue)
+        layout[displaySlot] = ItemStack(Items.BOOK).apply {
+            setCustomName(
+                Text.literal("$label: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
+                    .append(Text.literal("$currentValue").styled { it.withColor(Formatting.AQUA).withItalic(false) })
+            )
+            CustomGui.setItemLore(this, listOf(Text.literal("Number of active global hunts at once").styled { it.withColor(Formatting.DARK_GRAY).withItalic(false) }))
+        }
+        layout[increaseSlot] = createAdjustmentButton("Increase", 1, 0, Textures.INCREASE, label, currentValue)
     }
 
     private fun createAdjustmentButton(name: String, leftDelta: Int, rightDelta: Int, textureValue: String, label: String, currentValue: Int): ItemStack =
@@ -779,11 +849,19 @@ object HuntsGlobalSettingsGui {
             Text.literal(name).styled { it.withColor(if (leftDelta > 0) Formatting.GREEN else Formatting.RED) },
             listOf(
                 Text.literal("$label: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
-                    .append(Text.literal("$currentValue seconds").styled { it.withColor(Formatting.AQUA).withItalic(false) }),
+                    .append(
+                        Text.literal("$currentValue seconds")
+                            .styled { it.withColor(Formatting.AQUA).withItalic(false) }),
                 Text.literal("Left-click: ").styled { it.withColor(Formatting.YELLOW).withItalic(false) }
-                    .append(Text.literal("${if (leftDelta > 0) "+" else ""}$leftDelta seconds").styled { it.withColor(if (leftDelta > 0) Formatting.GREEN else Formatting.RED).withItalic(false) }),
+                    .append(
+                        Text.literal("${if (leftDelta > 0) "+" else ""}$leftDelta seconds").styled {
+                            it.withColor(if (leftDelta > 0) Formatting.GREEN else Formatting.RED).withItalic(false)
+                        }),
                 Text.literal("Right-click: ").styled { it.withColor(Formatting.YELLOW).withItalic(false) }
-                    .append(Text.literal("${if (rightDelta > 0) "+" else ""}$rightDelta seconds").styled { it.withColor(if (rightDelta > 0) Formatting.GREEN else Formatting.RED).withItalic(false) })
+                    .append(
+                        Text.literal("${if (rightDelta > 0) "+" else ""}$rightDelta seconds").styled {
+                            it.withColor(if (rightDelta > 0) Formatting.GREEN else Formatting.RED).withItalic(false)
+                        })
             ),
             textureValue
         )
@@ -796,6 +874,7 @@ object HuntsGlobalSettingsGui {
             else -> 0
         }
         when (context.slotIndex) {
+
             Slots.TOGGLE_MODE -> {
                 val newMode = if (mode == TimerMode.COOLDOWN) TimerMode.TIME_LIMIT else TimerMode.COOLDOWN
                 playerTimerModes[player] = newMode
@@ -813,8 +892,10 @@ object HuntsGlobalSettingsGui {
             Slots.SOLO_MEDIUM_INCREASE -> adjustTimer(player, "soloMedium", mode, delta)
             Slots.SOLO_HARD_DECREASE -> adjustTimer(player, "soloHard", mode, -delta)
             Slots.SOLO_HARD_INCREASE -> adjustTimer(player, "soloHard", mode, delta)
-            Slots.GLOBAL_DECREASE -> adjustTimer(player, "global", mode, -delta)
-            Slots.GLOBAL_INCREASE -> adjustTimer(player, "global", mode, delta)
+            Slots.GLOBAL_DECREASE -> if (context.clickType == ClickType.LEFT) adjustTimer(player, "global", mode, -1)
+            Slots.GLOBAL_INCREASE -> if (context.clickType == ClickType.LEFT) adjustTimer(player, "global", mode, 1)
+            Slots.ACTIVE_GLOBAL_DECREASE -> if (context.clickType == ClickType.LEFT) adjustActiveGlobalHunts(player, -1)
+            Slots.ACTIVE_GLOBAL_INCREASE -> if (context.clickType == ClickType.LEFT) adjustActiveGlobalHunts(player, 1)
             Slots.BACK -> HuntsEditorMainGui.openGui(player)
         }
     }
@@ -858,5 +939,14 @@ object HuntsGlobalSettingsGui {
             Text.literal("Set ${label.replaceFirstChar { it.titlecase() }} to ").styled { it.withColor(Formatting.GRAY) }
                 .append(Text.literal("$newValue seconds").styled { it.withColor(Formatting.AQUA) }), true
         )
+    }
+
+    private fun adjustActiveGlobalHunts(player: ServerPlayerEntity, delta: Int) {
+        val currentValue = HuntsConfig.config.activeGlobalHuntsAtOnce
+        val newValue = (currentValue + delta).coerceAtLeast(1)
+        HuntsConfig.config.activeGlobalHuntsAtOnce = newValue
+        HuntsConfig.saveConfig()
+        CustomGui.refreshGui(player, generateLayout(player))
+        player.sendMessage(Text.literal("Set Active Global Hunts At Once to $newValue").styled { it.withColor(Formatting.AQUA) }, true)
     }
 }

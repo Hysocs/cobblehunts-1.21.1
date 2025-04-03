@@ -20,7 +20,7 @@ import java.lang.RuntimeException
 
 /**
  * Data class representing a Pokémon entry in a hunt.
- * - species: The Pokémon's species (e.g., "pikachu").
+ * - species: The Pokémon's species (e.g., "pidgey").
  * - form: The Pokémon's form, if applicable (nullable).
  * - aspects: Special traits like "shiny" (set of strings).
  * - chance: Probability of this entry being selected (default 1.0).
@@ -79,27 +79,35 @@ data class ItemReward(
 
 /** Loot reward executing a command, optionally with a display item. */
 data class CommandReward(
-    val command: String,
+    var command: String,
     override var chance: Double,
     var serializableItemStack: SerializableItemStack? = null
 ) : LootReward()
 
 /**
- * Configuration data for hunts, including Pokémon lists, loot, and settings for all difficulties.
+ * New data class grouping permission-related configuration.
+ * This makes it clear that opLevel and permissionLevel belong to the permissions section.
+ */
+data class HuntPermissions(
+    var permissionLevel: Int = 2,
+    var opLevel: Int = 2,
+    var globalHuntPermission: String = "cobblehunts.global",
+    var soloEasyHuntPermission: String = "cobblehunts.solo.easy",
+    var soloNormalHuntPermission: String = "cobblehunts.solo.normal",
+    var soloMediumHuntPermission: String = "cobblehunts.solo.medium",
+    var soloHardHuntPermission: String = "cobblehunts.solo.hard"
+)
+
+/**
+ * Configuration data for hunts.
+ *
+ * The non-pool settings are at the top, while all the spawn/loot pools are at the bottom.
  */
 data class HuntsConfigData(
     override val version: String = "1.0.0",
     override val configId: String = "cobblehunts",
-    var globalPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
-    var soloEasyPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
-    var soloNormalPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
-    var soloMediumPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
-    var soloHardPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
-    var globalLoot: MutableList<LootReward> = mutableListOf(),
-    var soloEasyLoot: MutableList<LootReward> = mutableListOf(),
-    var soloNormalLoot: MutableList<LootReward> = mutableListOf(),
-    var soloMediumLoot: MutableList<LootReward> = mutableListOf(),
-    var soloHardLoot: MutableList<LootReward> = mutableListOf(),
+    var debugEnabled: Boolean = false,
+    var activeGlobalHuntsAtOnce: Int = 4,
     var soloEasyCooldown: Int = 120,
     var soloNormalCooldown: Int = 120,
     var soloMediumCooldown: Int = 120,
@@ -114,61 +122,88 @@ data class HuntsConfigData(
     var soloEasyPoints: Int = 10,
     var soloNormalPoints: Int = 15,
     var soloMediumPoints: Int = 25,
-    var soloHardPoints: Int = 40
+    var soloHardPoints: Int = 40,
+    // New nested permissions section.
+    var permissions: HuntPermissions = HuntPermissions(),
+    // Spawn/loot pools moved to the bottom
+    var globalPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
+    var soloEasyPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
+    var soloNormalPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
+    var soloMediumPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
+    var soloHardPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
+    var globalLoot: MutableList<LootReward> = mutableListOf(),
+    var soloEasyLoot: MutableList<LootReward> = mutableListOf(),
+    var soloNormalLoot: MutableList<LootReward> = mutableListOf(),
+    var soloMediumLoot: MutableList<LootReward> = mutableListOf(),
+    var soloHardLoot: MutableList<LootReward> = mutableListOf()
 ) : ConfigData
 
 object HuntsConfig {
-    // Default Pokémon lists based on assumed rarity from spawn tables
-
-    /** Global Pokémon list (used for global hunts, not tied to solo difficulties). */
-    private val defaultGlobalPokemon = listOf(
-        HuntPokemonEntry(species = "mewtwo", form = "Normal", aspects = setOf("shiny"), chance = 0.01),
-        HuntPokemonEntry(species = "dragonite", form = "Normal", aspects = emptySet(), chance = 0.05),
-        HuntPokemonEntry(species = "snorlax", form = "Normal", aspects = emptySet(), chance = 0.1)
-    )
-
-    /** Easy difficulty: Only species required. */
+    /**
+     * Global Pokémon pool is now set to be the same as the solo easy pool.
+     * All Pokémon pools have been trimmed to 10 entries.
+     */
     private val defaultSoloEasyPokemon = listOf(
-        HuntPokemonEntry(species = "pidgey", form = "Normal", aspects = emptySet(), chance = 0.2),
-        HuntPokemonEntry(species = "rattata", form = "Normal", aspects = emptySet(), chance = 0.2),
-        HuntPokemonEntry(species = "caterpie", form = "Normal", aspects = emptySet(), chance = 0.2),
-        HuntPokemonEntry(species = "weedle", form = "Normal", aspects = emptySet(), chance = 0.2),
-        HuntPokemonEntry(species = "zigzagoon", form = "Normal", aspects = emptySet(), chance = 0.2)
+        HuntPokemonEntry(species = "pidgey", form = "Normal", aspects = emptySet(), chance = 1.0),
+        HuntPokemonEntry(species = "rattata", form = "Normal", aspects = emptySet(), chance = 1.0),
+        HuntPokemonEntry(species = "caterpie", form = "Normal", aspects = emptySet(), chance = 1.0),
+        HuntPokemonEntry(species = "weedle", form = "Normal", aspects = emptySet(), chance = 1.0),
+        HuntPokemonEntry(species = "zigzagoon", form = "Normal", aspects = emptySet(), chance = 1.0),
+        HuntPokemonEntry(species = "bidoof", form = "Normal", aspects = emptySet(), chance = 1.0),
+        HuntPokemonEntry(species = "patrat", form = "Normal", aspects = emptySet(), chance = 1.0),
+        HuntPokemonEntry(species = "lillipup", form = "Normal", aspects = emptySet(), chance = 1.0),
+        HuntPokemonEntry(species = "pidove", form = "Normal", aspects = emptySet(), chance = 1.0),
+        HuntPokemonEntry(species = "sentret", form = "Normal", aspects = emptySet(), chance = 1.0)
     )
+    // Global pool is now identical to the solo easy pool.
+    private val defaultGlobalPokemon = defaultSoloEasyPokemon
 
-    /** Normal difficulty: Species + gender required. */
     private val defaultSoloNormalPokemon = listOf(
-        HuntPokemonEntry(species = "eevee", form = "Normal", aspects = emptySet(), chance = 0.5, gender = "male"),
-        HuntPokemonEntry(species = "eevee", form = "Normal", aspects = emptySet(), chance = 0.5, gender = "female"),
-        HuntPokemonEntry(species = "pikachu", form = "Normal", aspects = emptySet(), chance = 0.5, gender = "male"),
-        HuntPokemonEntry(species = "pikachu", form = "Normal", aspects = emptySet(), chance = 0.5, gender = "female")
+        HuntPokemonEntry(species = "eevee", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male"),
+        HuntPokemonEntry(species = "pikachu", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female"),
+        HuntPokemonEntry(species = "buneary", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male"),
+        HuntPokemonEntry(species = "shinx", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female"),
+        HuntPokemonEntry(species = "staravia", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male"),
+        HuntPokemonEntry(species = "bibarel", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female"),
+        HuntPokemonEntry(species = "watchog", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male"),
+        HuntPokemonEntry(species = "herdier", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female"),
+        HuntPokemonEntry(species = "tranquill", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male"),
+        HuntPokemonEntry(species = "furret", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female")
     )
 
-    /** Medium difficulty: Species + gender + nature required. */
     private val defaultSoloMediumPokemon = listOf(
-        HuntPokemonEntry(species = "growlithe", form = "Normal", aspects = emptySet(), chance = 0.25, gender = "male", nature = "Adamant"),
-        HuntPokemonEntry(species = "growlithe", form = "Normal", aspects = emptySet(), chance = 0.25, gender = "female", nature = "Modest"),
-        HuntPokemonEntry(species = "machop", form = "Normal", aspects = emptySet(), chance = 0.25, gender = "male", nature = "Brave"),
-        HuntPokemonEntry(species = "machop", form = "Normal", aspects = emptySet(), chance = 0.25, gender = "female", nature = "Jolly")
+        HuntPokemonEntry(species = "growlithe", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male", nature = "Adamant"),
+        HuntPokemonEntry(species = "machop", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female", nature = "Brave"),
+        HuntPokemonEntry(species = "vulpix", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male", nature = "Timid"),
+        HuntPokemonEntry(species = "sandshrew", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female", nature = "Impish"),
+        HuntPokemonEntry(species = "geodude", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male", nature = "Relaxed"),
+        HuntPokemonEntry(species = "ponyta", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female", nature = "Jolly"),
+        HuntPokemonEntry(species = "doduo", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male", nature = "Adamant"),
+        HuntPokemonEntry(species = "seel", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female", nature = "Calm"),
+        HuntPokemonEntry(species = "grimer", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male", nature = "Bold"),
+        HuntPokemonEntry(species = "shellder", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female", nature = "Naughty")
     )
 
-    /** Hard difficulty: Species + gender + nature + IVs required. */
     private val defaultSoloHardPokemon = listOf(
-        HuntPokemonEntry(species = "dragonite", form = "Normal", aspects = emptySet(), chance = 0.2, gender = "male", nature = "Adamant", ivRange = "2"),
-        HuntPokemonEntry(species = "snorlax", form = "Normal", aspects = emptySet(), chance = 0.2, gender = "female", nature = "Relaxed", ivRange = "2"),
-        HuntPokemonEntry(species = "lapras", form = "Normal", aspects = emptySet(), chance = 0.2, gender = "male", nature = "Modest", ivRange = "2"),
-        HuntPokemonEntry(species = "aerodactyl", form = "Normal", aspects = emptySet(), chance = 0.2, gender = "female", nature = "Jolly", ivRange = "2")
+        HuntPokemonEntry(species = "dragonite", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male", nature = "Adamant", ivRange = "2"),
+        HuntPokemonEntry(species = "snorlax", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female", nature = "Relaxed", ivRange = "2"),
+        HuntPokemonEntry(species = "lapras", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male", nature = "Modest", ivRange = "2"),
+        HuntPokemonEntry(species = "aerodactyl", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female", nature = "Jolly", ivRange = "2"),
+        HuntPokemonEntry(species = "garchomp", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male", nature = "Jolly", ivRange = "2"),
+        HuntPokemonEntry(species = "milotic", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female", nature = "Bold", ivRange = "2"),
+        HuntPokemonEntry(species = "tyranitar", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male", nature = "Adamant", ivRange = "2"),
+        HuntPokemonEntry(species = "salamence", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "female", nature = "Naive", ivRange = "2"),
+        HuntPokemonEntry(species = "metagross", form = "Normal", aspects = emptySet(), chance = 1.0, gender = null, nature = "Adamant", ivRange = "2"),
+        HuntPokemonEntry(species = "lucario", form = "Normal", aspects = emptySet(), chance = 1.0, gender = "male", nature = "Timid", ivRange = "2")
     )
-
-    // Default Loot lists using CommandRewards
 
     /** Global loot rewards. */
     private val defaultGlobalLoot = listOf<LootReward>(
         CommandReward(
-            command = "xp add %player% 200",
+            command = "eco deposit 150 dollars %player%",
             chance = 1.0,
             serializableItemStack = SerializableItemStack(
-                itemStackString = "{\"id\":\"minecraft:experience_bottle\",\"count\":1,\"components\":{\"minecraft:custom_name\":\"\\\"200 XP\\\"\"}}"
+                itemStackString = "{\"id\":\"minecraft:paper\",\"count\":1,\"components\":{\"minecraft:custom_name\":\"\\\"§aMoney Reward: $150\\\"\",\"minecraft:lore\":[\"\\\"You will receive 50 money.\\\"\"]}}"
             )
         )
     )
@@ -176,10 +211,10 @@ object HuntsConfig {
     /** Easy difficulty loot rewards. */
     private val defaultSoloEasyLoot = listOf<LootReward>(
         CommandReward(
-            command = "xp add %player% 10",
+            command = "eco deposit 10 dollars %player%",
             chance = 1.0,
             serializableItemStack = SerializableItemStack(
-                itemStackString = "{\"id\":\"minecraft:experience_bottle\",\"count\":1,\"components\":{\"minecraft:custom_name\":\"\\\"10 XP\\\"\"}}"
+                itemStackString = "{\"id\":\"minecraft:paper\",\"count\":1,\"components\":{\"minecraft:custom_name\":\"\\\"§aMoney Reward: $10\\\"\",\"minecraft:lore\":[\"\\\"You will receive 10 money.\\\"\"]}}"
             )
         )
     )
@@ -187,10 +222,10 @@ object HuntsConfig {
     /** Normal difficulty loot rewards. */
     private val defaultSoloNormalLoot = listOf<LootReward>(
         CommandReward(
-            command = "xp add %player% 20",
+            command = "eco deposit 15 dollars %player%",
             chance = 1.0,
             serializableItemStack = SerializableItemStack(
-                itemStackString = "{\"id\":\"minecraft:experience_bottle\",\"count\":1,\"components\":{\"minecraft:custom_name\":\"\\\"20 XP\\\"\"}}"
+                itemStackString = "{\"id\":\"minecraft:paper\",\"count\":1,\"components\":{\"minecraft:custom_name\":\"\\\"§aMoney Reward: $15\\\"\",\"minecraft:lore\":[\"\\\"You will receive 15 money.\\\"\"]}}"
             )
         )
     )
@@ -198,10 +233,10 @@ object HuntsConfig {
     /** Medium difficulty loot rewards. */
     private val defaultSoloMediumLoot = listOf<LootReward>(
         CommandReward(
-            command = "xp add %player% 50",
+            command = "eco deposit 25 dollars %player%",
             chance = 1.0,
             serializableItemStack = SerializableItemStack(
-                itemStackString = "{\"id\":\"minecraft:experience_bottle\",\"count\":1,\"components\":{\"minecraft:custom_name\":\"\\\"50 XP\\\"\"}}"
+                itemStackString = "{\"id\":\"minecraft:paper\",\"count\":1,\"components\":{\"minecraft:custom_name\":\"\\\"§aMoney Reward: $25\\\"\",\"minecraft:lore\":[\"\\\"You will receive 25 money.\\\"\"]}}"
             )
         )
     )
@@ -209,10 +244,10 @@ object HuntsConfig {
     /** Hard difficulty loot rewards. */
     private val defaultSoloHardLoot = listOf<LootReward>(
         CommandReward(
-            command = "xp add %player% 100",
+            command = "eco deposit 50 dollars %player%",
             chance = 1.0,
             serializableItemStack = SerializableItemStack(
-                itemStackString = "{\"id\":\"minecraft:experience_bottle\",\"count\":1,\"components\":{\"minecraft:custom_name\":\"\\\"100 XP\\\"\"}}"
+                itemStackString = "{\"id\":\"minecraft:paper\",\"count\":1,\"components\":{\"minecraft:custom_name\":\"\\\"§aMoney Reward: $50\\\"\",\"minecraft:lore\":[\"\\\"You will receive 50 money.\\\"\"]}}"
             )
         )
     )
@@ -245,6 +280,7 @@ object HuntsConfig {
             soloNormalPoints = 15,
             soloMediumPoints = 25,
             soloHardPoints = 40
+            // permissions are initialized with their default values via HuntPermissions()
         )
     }
 
@@ -258,16 +294,8 @@ object HuntsConfig {
                 "Stores Pokémon and loot pools for Global and Solo hunts."
             ),
             sectionComments = mapOf(
-                "globalPokemon" to "Pokémon for Global hunts with spawn chances, genders, natures, and IV ranges.",
-                "soloEasyPokemon" to "Pokémon for Solo Easy tier (only species).",
-                "soloNormalPokemon" to "Pokémon for Solo Normal tier (species + gender).",
-                "soloMediumPokemon" to "Pokémon for Solo Medium tier (species + gender + nature).",
-                "soloHardPokemon" to "Pokémon for Solo Hard tier (species + gender + nature + IVs).",
-                "globalLoot" to "Loot rewards for Global hunts.",
-                "soloEasyLoot" to "Loot rewards for Solo Easy tier.",
-                "soloNormalLoot" to "Loot rewards for Solo Normal tier.",
-                "soloMediumLoot" to "Loot rewards for Solo Medium tier.",
-                "soloHardLoot" to "Loot rewards for Solo Hard tier.",
+                "debugEnabled" to "Enable debug logging for CobbleHunts. Set to true to see detailed logs.",
+                "activeGlobalHuntsAtOnce" to "Number of global hunts active at once (Max: 7).",
                 "soloEasyCooldown" to "Cooldown timer for Solo Easy hunts in seconds.",
                 "soloNormalCooldown" to "Cooldown timer for Solo Normal hunts in seconds.",
                 "soloMediumCooldown" to "Cooldown timer for Solo Medium hunts in seconds.",
@@ -282,7 +310,9 @@ object HuntsConfig {
                 "soloEasyPoints" to "Points awarded for completing a solo easy hunt.",
                 "soloNormalPoints" to "Points awarded for completing a solo normal hunt.",
                 "soloMediumPoints" to "Points awarded for completing a solo medium hunt.",
-                "soloHardPoints" to "Points awarded for completing a solo hard hunt."
+                "soloHardPoints" to "Points awarded for completing a solo hard hunt.",
+                "permissions" to "Permission settings for hunts. Note: 'permissionLevel' and 'opLevel' are part of permissions.",
+                "huntingBrushItem" to "Serialized item string for the Hunting Brush."
             )
         )
     )

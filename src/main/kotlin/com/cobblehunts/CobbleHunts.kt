@@ -1,7 +1,6 @@
 package com.cobblehunts
 
-import com.cobblehunts.gui.HuntsEditorMainGui
-import com.cobblehunts.gui.PlayerHuntsGui
+import com.cobblehunts.gui.huntsgui.PlayerHuntsGui
 import com.cobblehunts.utils.*
 import com.cobblemon.mod.common.Cobblemon
 import com.cobblemon.mod.common.api.pokemon.Natures
@@ -9,11 +8,12 @@ import com.cobblemon.mod.common.api.pokemon.PokemonProperties
 import com.cobblemon.mod.common.pokemon.Pokemon
 import com.everlastingutils.command.CommandManager
 import com.everlastingutils.scheduling.SchedulerManager
+import com.everlastingutils.utils.LogDebug
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
+import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.server.network.ServerPlayerEntity
-import net.minecraft.text.Text
 import org.slf4j.LoggerFactory
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -21,311 +21,252 @@ import kotlin.random.Random
 
 object CobbleHunts : ModInitializer {
 	private val logger = LoggerFactory.getLogger("cobblehunts")
-	private val cmdManager = CommandManager("hunts", defaultPermissionLevel = 2, defaultOpLevel = 2)
+	private const val MOD_ID = "cobblehunts"
 	private val playerData = mutableMapOf<UUID, PlayerHuntData>()
-	private var guiRefreshScheduled = false
-
-	data class GlobalHuntState(
-		val instance: HuntInstance,
-		var isCompleted: Boolean = false
-	)
-
-	var globalHuntState: GlobalHuntState? = null
+	val removedPokemonCache = mutableMapOf<UUID, MutableList<Pokemon>>()
+	// Global hunt state variables
+	var globalHuntStates: List<HuntInstance> = emptyList()
+	var sharedEndTime: Long? = null
 	var globalCooldownEnd: Long = 0
-	private var lastCheckTime: Long = System.currentTimeMillis()
 
 	override fun onInitialize() {
+		if (!FabricLoader.getInstance().isModLoaded("everlastingutils")) {
+			logger.error("EverlastingUtils is required but not loaded!")
+			return
+		}
+		LogDebug.init(MOD_ID, false)
 		HuntsConfig.initializeAndLoad()
-		registerCommands()
+		updateDebugState()
+		HuntsCommands.registerCommands()
+
+		// Start global hunts immediately and ensure no cooldown on startup
 		startGlobalHunt()
-		ServerLifecycleEvents.SERVER_STARTED.register { server ->
+		globalCooldownEnd = 0
+
+		ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
+			playerData.remove(handler.player.uuid)
 		}
 
-		ServerTickEvents.END_SERVER_TICK.register { server ->
-			onServerTick()
-			if (!guiRefreshScheduled) {
-				SchedulerManager.scheduleAtFixedRate("cobblehunts-gui-refresh", server, 0, 1, TimeUnit.SECONDS) {
-					PlayerHuntsGui.refreshDynamicGuis()
-				}
-				guiRefreshScheduled = true
+		ServerLifecycleEvents.SERVER_STARTED.register { server ->
+			SchedulerManager.scheduleAtFixedRate("cobblehunts-gui-refresh", server, 0, 1, TimeUnit.SECONDS) {
+				PlayerHuntsGui.refreshDynamicGuis()
+			}
+			SchedulerManager.scheduleAtFixedRate("cobblehunts-global-check", server, 0, 1, TimeUnit.SECONDS) {
+				checkGlobalHuntState()
 			}
 		}
+
 		logger.info("CobbleHunts initialized")
 	}
 
-	private fun registerCommands() {
-		cmdManager.command("hunts", permission = "hunts.use") {
-			executes { ctx ->
-				val player = ctx.source.player as? ServerPlayerEntity
-				if (player != null) {
-					PlayerHuntsGui.openMainGui(player)
-				} else {
-					ctx.source.sendError(Text.literal("This command can only be used by players."))
-				}
-				1
-			}
-			subcommand("editor", permission = "hunts.editor") {
-				executes { ctx ->
-					val player = ctx.source.player as? ServerPlayerEntity
-					if (player != null) {
-						HuntsEditorMainGui.openGui(player)
-					} else {
-						ctx.source.sendError(Text.literal("This command can only be used by players."))
-					}
-					1
-				}
-			}
-			subcommand("reload", permission = "hunts.reload") {
-				executes { ctx ->
-					HuntsConfig.reloadBlocking()
-					HuntsConfig.saveConfig()
-					ctx.source.sendMessage(Text.literal("CobbleHunts config reloaded."))
-					1
-				}
-			}
+	fun updateDebugState() {
+		val debugEnabled = HuntsConfig.config.debugEnabled
+		LogDebug.setDebugEnabledForMod(MOD_ID, debugEnabled)
+		logger.info("Debug logging ${if (debugEnabled) "enabled" else "disabled"} for CobbleHunts")
+	}
+
+	internal fun getPlayerData(player: ServerPlayerEntity) =
+		playerData.getOrPut(player.uuid) { PlayerHuntData() }
+
+	fun isOnCooldown(player: ServerPlayerEntity, difficulty: String) =
+		System.currentTimeMillis() < getPlayerData(player).cooldowns.getOrDefault(difficulty, 0)
+
+	// Generic weighted random selection used for both Pokémon and loot rewards.
+	private inline fun <T> weightedRandom(list: List<T>, weightSelector: (T) -> Double): T? {
+		if (list.isEmpty()) return null
+		val total = list.sumOf(weightSelector)
+		if (total <= 0) return list.random()
+		var randomValue = Random.nextDouble() * total
+		for (item in list) {
+			randomValue -= weightSelector(item)
+			if (randomValue <= 0) return item
 		}
-		cmdManager.register()
+		return list.last()
 	}
 
-	internal fun getPlayerData(player: ServerPlayerEntity): PlayerHuntData {
-		return playerData.getOrPut(player.uuid) { PlayerHuntData() }
-	}
-
-	fun isOnCooldown(player: ServerPlayerEntity, difficulty: String): Boolean {
-		val data = getPlayerData(player)
-		val cooldownEnd = data.cooldowns[difficulty] ?: 0
-		return System.currentTimeMillis() < cooldownEnd
-	}
-
-	private fun selectPokemonFromList(pokemonList: List<HuntPokemonEntry>): HuntPokemonEntry? {
+	// Single function to select a Pokémon entry, filtering out species if needed.
+	private fun selectPokemonFromList(
+		pokemonList: List<HuntPokemonEntry>,
+		usedSpecies: Set<String>? = null
+	): HuntPokemonEntry? {
 		if (pokemonList.isEmpty()) return null
-		val totalChance = pokemonList.sumOf { it.chance }
-		if (totalChance <= 0) return pokemonList.random()
-		var random = Random.nextDouble() * totalChance
-		for (entry in pokemonList) {
-			random -= entry.chance
-			if (random <= 0) return entry
-		}
-		return pokemonList.last()
+		val available = usedSpecies?.let { species ->
+			pokemonList.filter { it.species.lowercase() !in species }
+		} ?: pokemonList
+		return if (available.isNotEmpty())
+			weightedRandom(available) { it.chance }
+		else
+			weightedRandom(pokemonList) { it.chance }
 	}
 
-	fun selectPokemonForDifficulty(difficulty: String): HuntPokemonEntry? {
-		val pokemonList = when (difficulty) {
-			"easy" -> HuntsConfig.config.soloEasyPokemon
-			"normal" -> HuntsConfig.config.soloNormalPokemon
-			"medium" -> HuntsConfig.config.soloMediumPokemon
-			"hard" -> HuntsConfig.config.soloHardPokemon
-			else -> throw IllegalArgumentException("Unknown difficulty: $difficulty")
-		}
-		return selectPokemonFromList(pokemonList)
+	fun selectPokemonForDifficulty(difficulty: String): HuntPokemonEntry? = when (difficulty) {
+		"easy"   -> weightedRandom(HuntsConfig.config.soloEasyPokemon) { it.chance }
+		"normal" -> weightedRandom(HuntsConfig.config.soloNormalPokemon) { it.chance }
+		"medium" -> weightedRandom(HuntsConfig.config.soloMediumPokemon) { it.chance }
+		"hard"   -> weightedRandom(HuntsConfig.config.soloHardPokemon) { it.chance }
+		else     -> throw IllegalArgumentException("Unknown difficulty: $difficulty")
 	}
 
-	fun selectGlobalPokemon(): HuntPokemonEntry? {
-		return selectPokemonFromList(HuntsConfig.config.globalPokemon)
-	}
+	fun selectGlobalPokemon(): HuntPokemonEntry? =
+		weightedRandom(HuntsConfig.config.globalPokemon) { it.chance }
 
 	fun selectRewardForDifficulty(difficulty: String): LootReward? {
 		val lootList = when (difficulty) {
-			"easy" -> HuntsConfig.config.soloEasyLoot
+			"easy"   -> HuntsConfig.config.soloEasyLoot
 			"normal" -> HuntsConfig.config.soloNormalLoot
 			"medium" -> HuntsConfig.config.soloMediumLoot
-			"hard" -> HuntsConfig.config.soloHardLoot
-			else -> return null
+			"hard"   -> HuntsConfig.config.soloHardLoot
+			else     -> return null
 		}
-		if (lootList.isEmpty()) return null
-		val totalChance = lootList.sumOf { it.chance }
-		if (totalChance <= 0) return lootList.random()
-		var random = Random.nextDouble() * totalChance
-		for (reward in lootList) {
-			random -= reward.chance
-			if (random <= 0) return reward
-		}
-		return lootList.last()
+		return weightedRandom(lootList) { it.chance }
 	}
 
-	fun selectGlobalReward(): LootReward? {
-		val lootList = HuntsConfig.config.globalLoot
-		if (lootList.isEmpty()) return null
-		val totalChance = lootList.sumOf { it.chance }
-		if (totalChance <= 0) return lootList.random()
-		var random = Random.nextDouble() * totalChance
-		for (reward in lootList) {
-			random -= reward.chance
-			if (random <= 0) return reward
-		}
-		return lootList.last()
-	}
+	fun selectGlobalReward(): LootReward? =
+		weightedRandom(HuntsConfig.config.globalLoot) { it.chance }
 
+	// Creates a hunt instance with inline decisions for gender, nature, and IVs.
 	private fun createHuntInstance(entry: HuntPokemonEntry, difficulty: String): HuntInstance {
-		val pokemonProperties = PokemonProperties.parse("${entry.species}${if (entry.form != null) " form=${entry.form}" else ""}")
-		val pokemon = pokemonProperties.create()
+		val props = PokemonProperties.parse("${entry.species}${entry.form?.let { " form=$it" } ?: ""}")
+		val pokemon = props.create()
 		val possibleGenders = pokemon.form.possibleGenders
-
-		// Determine requiredGender
-		val requiredGender = when (difficulty) {
-			"easy" -> null
-			"normal", "medium", "hard" -> {
-				when {
-					entry.gender != null -> {
-						when (entry.gender!!.lowercase()) {
-							"male" -> "MALE"
-							"female" -> "FEMALE"
-							"random" -> {
-								when {
-									possibleGenders.isEmpty() -> "GENDERLESS"
-									possibleGenders.size == 1 -> possibleGenders.first().name
-									else -> if (Random.nextBoolean()) "MALE" else "FEMALE"
-								}
-							}
-							else -> null
-						}
-					}
-					else -> {
-						when {
-							possibleGenders.isEmpty() -> "GENDERLESS"
-							possibleGenders.size == 1 -> possibleGenders.first().name
-							else -> if (Random.nextBoolean()) "MALE" else "FEMALE"
-						}
-					}
-				}
-			}
-			else -> null
-		}
-
-		// Determine requiredNature
-		val requiredNature = when (difficulty) {
-			"easy", "normal" -> null
-			"medium", "hard" -> {
-				if (entry.nature == null || entry.nature!!.lowercase() == "random") {
-					Natures.all().random().name.path.lowercase()
-				} else {
-					entry.nature!!.lowercase()
-				}
-			}
-			else -> null
-		}
-
-		// Determine requiredIVs
-		val allIVs = listOf("hp", "attack", "defense", "special_attack", "special_defense", "speed")
-		val requiredIVs = when (difficulty) {
-			"hard" -> {
-				if (entry.ivRange != null) {
-					allIVs.shuffled().take(entry.ivRange!!.toIntOrNull() ?: 2)
-				} else {
-					allIVs.shuffled().take(2)
-				}
-			}
-			else -> emptyList()
-		}
-
-		val reward = selectRewardForDifficulty(difficulty)
-		return HuntInstance(entry, requiredGender, requiredNature, requiredIVs, reward)
+		val requiredGender = if (difficulty == "easy") null else entry.gender?.lowercase()?.let { when (it) {
+			"male"    -> "MALE"
+			"female"  -> "FEMALE"
+			"random"  -> if (possibleGenders.isEmpty()) "GENDERLESS"
+			else if (possibleGenders.size == 1) possibleGenders.first().name
+			else if (Random.nextBoolean()) "MALE" else "FEMALE"
+			else      -> null
+		} } ?: if (possibleGenders.isEmpty()) "GENDERLESS"
+		else if (possibleGenders.size == 1) possibleGenders.first().name
+		else if (Random.nextBoolean()) "MALE" else "FEMALE"
+		val requiredNature = if (difficulty in listOf("medium", "hard"))
+			entry.nature?.takeIf { it.lowercase() != "random" }?.lowercase()
+				?: Natures.all().random().name.path.lowercase() else null
+		val requiredIVs = if (difficulty == "hard")
+			listOf("hp", "attack", "defense", "special_attack", "special_defense", "speed")
+				.shuffled().take(entry.ivRange?.toIntOrNull() ?: 2)
+		else emptyList()
+		return HuntInstance(entry, requiredGender, requiredNature, requiredIVs, selectRewardForDifficulty(difficulty))
 	}
 
 	private fun startGlobalHunt() {
-		val pokemon = selectGlobalPokemon()
-		if (pokemon != null) {
-			val reward = selectGlobalReward()
-			val instance = HuntInstance(
-				entry = pokemon,
-				requiredGender = null,
-				requiredNature = null, // Global hunts do not specify a nature
-				requiredIVs = emptyList(),
-				reward = reward,
-				endTime = System.currentTimeMillis() + (HuntsConfig.config.globalTimeLimit * 1000L)
-			)
-			globalHuntState = GlobalHuntState(instance)
-		} else {
-			logger.warn("No Pokémon available for global hunt")
+		val numHunts = HuntsConfig.config.activeGlobalHuntsAtOnce
+		val endTime = System.currentTimeMillis() + HuntsConfig.config.globalTimeLimit * 1000L
+		val usedSpecies = mutableSetOf<String>()
+		globalHuntStates = (0 until numHunts).mapNotNull { i ->
+			val pokemon = if (usedSpecies.size < HuntsConfig.config.globalPokemon.size)
+				selectPokemonFromList(HuntsConfig.config.globalPokemon, usedSpecies)
+			else
+				selectGlobalPokemon()
+			pokemon?.also { usedSpecies.add(it.species.lowercase()) }?.let { poke ->
+				LogDebug.debug("Selected Pokémon for global hunt #$i: ${poke.species}", MOD_ID)
+				HuntInstance(poke, null, null, emptyList(), selectGlobalReward(), endTime)
+			} ?: run {
+				logger.warn("No Pokémon available for global hunt #$i")
+				null
+			}
 		}
+		sharedEndTime = endTime
+		playerData.values.forEach { it.completedGlobalHunts.clear() }
 	}
 
 	internal fun startGlobalCooldown() {
-		globalHuntState = null
-		val cooldown = HuntsConfig.config.globalCooldown
-		globalCooldownEnd = System.currentTimeMillis() + (cooldown * 1000L)
+		globalHuntStates = emptyList()
+		sharedEndTime = null
+		globalCooldownEnd = System.currentTimeMillis() + HuntsConfig.config.globalCooldown * 1000L
 	}
 
-	fun onServerTick() {
+	private fun checkGlobalHuntState() {
 		val currentTime = System.currentTimeMillis()
-		if (currentTime - lastCheckTime >= 60000) {
-			lastCheckTime = currentTime
-			if (globalHuntState != null) {
-				if (!globalHuntState!!.isCompleted && currentTime > globalHuntState!!.instance.endTime!!) {
-					logger.info("Global hunt timed out")
-					startGlobalCooldown()
-				}
-			} else if (currentTime > globalCooldownEnd) {
-				startGlobalHunt()
+		when {
+			sharedEndTime != null && currentTime > sharedEndTime!! -> {
+				logger.info("All global hunts have expired, starting cooldown")
+				startGlobalCooldown()
 			}
+			globalHuntStates.isEmpty() && currentTime > globalCooldownEnd -> startGlobalHunt()
 		}
 	}
 
 	fun refreshPreviewPokemon(player: ServerPlayerEntity) {
-		val difficulties = listOf("easy", "normal", "medium", "hard")
-		difficulties.forEach { difficulty ->
-			val data = getPlayerData(player)
-			if (!isOnCooldown(player, difficulty) &&
-				data.activePokemon[difficulty] == null &&
-				data.previewPokemon[difficulty] == null) {
-				val pokemon = selectPokemonForDifficulty(difficulty)
-				if (pokemon != null) {
-					val instance = createHuntInstance(pokemon, difficulty)
-					setPreviewPokemon(player, difficulty, instance)
-				} else {
-					logger.warn("No Pokémon available for $difficulty, skipping preview for player ${player.name.string}")
-				}
+		val data = getPlayerData(player)
+		listOf("easy", "normal", "medium", "hard").forEach { difficulty ->
+			if (!isOnCooldown(player, difficulty)
+				&& data.activePokemon[difficulty] == null
+				&& data.previewPokemon[difficulty] == null) {
+				selectPokemonForDifficulty(difficulty)?.let { pokemon ->
+					LogDebug.debug("Generating preview for ${player.name.string} on $difficulty: ${pokemon.species}", MOD_ID)
+					setPreviewPokemon(player, difficulty, createHuntInstance(pokemon, difficulty))
+				} ?: logger.warn("No Pokémon available for $difficulty preview for ${player.name.string}")
 			}
 		}
 	}
 
 	fun setPreviewPokemon(player: ServerPlayerEntity, difficulty: String, instance: HuntInstance) {
-		val data = getPlayerData(player)
-		data.previewPokemon[difficulty] = instance
+		getPlayerData(player).previewPokemon[difficulty] = instance
 	}
 
-	fun getPreviewPokemon(player: ServerPlayerEntity, difficulty: String): HuntInstance? {
-		val data = getPlayerData(player)
-		return data.previewPokemon[difficulty]
-	}
+	fun getPreviewPokemon(player: ServerPlayerEntity, difficulty: String): HuntInstance? =
+		getPlayerData(player).previewPokemon[difficulty]
 
 	fun activateMission(player: ServerPlayerEntity, difficulty: String, instance: HuntInstance) {
 		val data = getPlayerData(player)
 		data.activePokemon[difficulty] = instance
-		val timeLimit = when (difficulty) {
-			"easy" -> HuntsConfig.config.soloEasyTimeLimit
+		instance.endTime = when (difficulty) {
+			"easy"   -> HuntsConfig.config.soloEasyTimeLimit
 			"normal" -> HuntsConfig.config.soloNormalTimeLimit
 			"medium" -> HuntsConfig.config.soloMediumTimeLimit
-			"hard" -> HuntsConfig.config.soloHardTimeLimit
-			else -> 0
-		}
-		if (timeLimit > 0) {
-			instance.endTime = System.currentTimeMillis() + (timeLimit * 1000L)
-		} else {
-			instance.endTime = null
-		}
+			"hard"   -> HuntsConfig.config.soloHardTimeLimit
+			else     -> 0
+		}.takeIf { it > 0 }?.let { System.currentTimeMillis() + it * 1000L }
 		data.previewPokemon.remove(difficulty)
 	}
 
-	fun getGlobalPokemon(): HuntPokemonEntry? {
-		return globalHuntState?.instance?.entry
+	fun getPlayerParty(player: ServerPlayerEntity): List<Pokemon> =
+		Cobblemon.storage.getParty(player).toList()
+
+	fun restartHunts() {
+		// Clear solo hunts for all players
+		playerData.values.forEach { data ->
+			data.previewPokemon.clear()
+			data.activePokemon.clear()
+			data.completedGlobalHunts.clear()
+		}
+		// Reset global cooldown and start new global hunts
+		globalCooldownEnd = 0
+		startGlobalHunt()
+	}
+	fun hasHuntPermission(player: ServerPlayerEntity, tier: String): Boolean {
+		val permissionNode = when (tier.lowercase()) {
+			"global" -> HuntsConfig.config.permissions.globalHuntPermission
+			"easy" -> HuntsConfig.config.permissions.soloEasyHuntPermission
+			"normal" -> HuntsConfig.config.permissions.soloNormalHuntPermission
+			"medium" -> HuntsConfig.config.permissions.soloMediumHuntPermission
+			"hard" -> HuntsConfig.config.permissions.soloHardHuntPermission
+			else -> ""
+		}
+		val source = player.server.commandSource.withEntity(player).withPosition(player.pos)
+		return CommandManager.hasPermissionOrOp(
+			source,
+			permissionNode,
+			HuntsConfig.config.permissions.permissionLevel,
+			HuntsConfig.config.permissions.opLevel
+		)
 	}
 
-	fun getPlayerParty(player: ServerPlayerEntity): List<Pokemon> {
-		return Cobblemon.storage.getParty(player).toList()
-	}
+
 }
 
 data class PlayerHuntData(
 	val previewPokemon: MutableMap<String, HuntInstance> = mutableMapOf(),
 	val activePokemon: MutableMap<String, HuntInstance> = mutableMapOf(),
-	val cooldowns: MutableMap<String, Long> = mutableMapOf()
+	val cooldowns: MutableMap<String, Long> = mutableMapOf(),
+	val completedGlobalHunts: MutableSet<Int> = mutableSetOf()
 )
 
 data class HuntInstance(
 	val entry: HuntPokemonEntry,
 	val requiredGender: String?,
-	val requiredNature: String?, // Added field for nature
+	val requiredNature: String?,
 	val requiredIVs: List<String>,
 	val reward: LootReward?,
 	var endTime: Long? = null
