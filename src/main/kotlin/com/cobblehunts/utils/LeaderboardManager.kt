@@ -16,10 +16,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
+import java.util.concurrent.ConcurrentHashMap
 
 object LeaderboardManager {
     private val data = mutableMapOf<String, Int>()
-    private val mojangProfileCache = mutableMapOf<String, GameProfile>()
+    private val mojangProfileCache = ConcurrentHashMap<String, GameProfile>()
     private val mojangProfileExecutor = Executors.newSingleThreadExecutor()
 
     init {
