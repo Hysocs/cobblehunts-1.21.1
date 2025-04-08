@@ -104,7 +104,7 @@ data class HuntPermissions(
  * The non-pool settings are at the top, while all the spawn/loot pools are at the bottom.
  */
 data class HuntsConfigData(
-    override val version: String = "1.0.0",
+    override val version: String = "1.0.1",
     override val configId: String = "cobblehunts",
     var debugEnabled: Boolean = false,
     var activeGlobalHuntsAtOnce: Int = 4,
@@ -126,6 +126,7 @@ data class HuntsConfigData(
     // New nested permissions section.
     var permissions: HuntPermissions = HuntPermissions(),
     // Spawn/loot pools moved to the bottom
+    var enableLeaderboard: Boolean = true,
     var onlyAllowTurnInIfCapturedAfterHuntStarted: Boolean = true,
     var lockGlobalHuntsOnCompletionForAllPlayers: Boolean = true,
     var globalPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
@@ -281,13 +282,13 @@ object HuntsConfig {
             soloEasyPoints = 10,
             soloNormalPoints = 15,
             soloMediumPoints = 25,
-            soloHardPoints = 40
-            // permissions are initialized with their default values via HuntPermissions()
+            soloHardPoints = 40,
+            enableLeaderboard = true
         )
     }
 
     private val configManager = ConfigManager(
-        currentVersion = "1.0.0",
+        currentVersion = "1.0.1",
         defaultConfig = createDefaultConfig(),
         configClass = HuntsConfigData::class,
         metadata = ConfigMetadata(
@@ -314,6 +315,7 @@ object HuntsConfig {
                 "soloMediumPoints" to "Points awarded for completing a solo medium hunt.",
                 "soloHardPoints" to "Points awarded for completing a solo hard hunt.",
                 "permissions" to "Permission settings for hunts. Note: 'permissionLevel' and 'opLevel' are part of permissions.",
+                "enableLeaderboard" to "Enable or disable the leaderboard feature. If false, the leaderboard button will not be shown in the GUI.",
                 "huntingBrushItem" to "Serialized item string for the Hunting Brush.",
                 "onlyAllowTurnInIfCapturedAfterHuntStarted" to "Only allows you to turn in mons captured after starting a hunt",
                 "lockGlobalHuntsOnCompletionForAllPlayers" to "If true, once a global hunt is completed by any player, it is locked for all players until the next round."

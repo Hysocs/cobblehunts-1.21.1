@@ -65,10 +65,10 @@ object PlayerHuntsGui {
     private val huntSlotMap = mapOf(
         1 to listOf(13),
         2 to listOf(12, 14),
-        3 to listOf(12, 13, 14),
+        3 to listOf(11, 13, 15),
         4 to listOf(10, 12, 14, 16),
-        5 to listOf(11, 12, 13, 14, 15),
-        6 to listOf(10, 11, 13, 14, 15, 16),
+        5 to listOf(9, 11, 13, 15, 17),
+        6 to listOf(9, 11, 12, 14, 15, 17),
         7 to listOf(10, 11, 12, 13, 14, 15, 16)
     )
 
@@ -218,12 +218,16 @@ object PlayerHuntsGui {
             lore = listOf(Text.literal("Click to view solo hunts").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.YELLOW) }),
             textureValue = MainTextures.SOLO
         )
-        layout[MainSlots.LEADERBOARD] = CustomGui.createPlayerHeadButton(
-            textureName = "Leaderboard",
-            title = Text.literal("Leaderboard").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GOLD) },
-            lore = listOf(Text.literal("View top players").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.YELLOW) }),
-            textureValue = MainTextures.LEADERBOARD
-        )
+        if (HuntsConfig.config.enableLeaderboard) {
+            layout[MainSlots.LEADERBOARD] = CustomGui.createPlayerHeadButton(
+                textureName = "Leaderboard",
+                title = Text.literal("Leaderboard").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GOLD) },
+                lore = listOf(Text.literal("View top players").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.YELLOW) }),
+                textureValue = MainTextures.LEADERBOARD
+            )
+        } else {
+            layout[MainSlots.LEADERBOARD] = ItemStack(Items.GRAY_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
+        }
         return layout
     }
 
@@ -242,7 +246,12 @@ object PlayerHuntsGui {
                 openGlobalHuntsGui(player)
             }
             MainSlots.SOLO -> openSoloHuntsGui(player)
-            MainSlots.LEADERBOARD -> openLeaderboardGui(player)
+            MainSlots.LEADERBOARD -> {
+                if (HuntsConfig.config.enableLeaderboard) {
+                    openLeaderboardGui(player)
+                }
+                // Else, do nothing if enableLeaderboard is false
+            }
         }
     }
 
@@ -271,18 +280,12 @@ object PlayerHuntsGui {
         val leaderboardSlots = listOf(13, 21, 22, 23, 29, 30, 31, 32, 33, 37, 38, 39, 40, 41, 42, 43)
 
         for (i in 0 until minOf(topPlayers.size, 16)) {
-            val (playerName, points) = topPlayers[i]
+            val (playerName, points, storedTexture) = topPlayers[i]
             val slot = leaderboardSlots[i]
 
             logDebug("DEBUG: Processing leaderboard entry for '$playerName' at slot $slot with $points points", "cobblehunts")
 
-            // Create a default head with an offline profile (fallback)
-            val defaultHead = ItemStack(Items.PLAYER_HEAD)
-            val offlineUUID = java.util.UUID.nameUUIDFromBytes("OfflinePlayer:$playerName".toByteArray())
-            logDebug("DEBUG: Computed offlineUUID for '$playerName': $offlineUUID", "cobblehunts")
-            val defaultOfflineProfile = GameProfile(offlineUUID, playerName)
-            defaultHead.set(DataComponentTypes.PROFILE, ProfileComponent(defaultOfflineProfile))
-
+            val head = ItemStack(Items.PLAYER_HEAD)
             val rankText = Text.literal("Rank ")
                 .setStyle(Style.EMPTY.withItalic(false))
                 .styled { it.withColor(Formatting.GRAY) }
@@ -296,7 +299,7 @@ object PlayerHuntsGui {
                 .setStyle(Style.EMPTY.withItalic(false))
                 .styled { it.withColor(Formatting.AQUA) }
             val fullTitle = rankText.append(rankNumber).append(colon).append(playerNameText)
-            defaultHead.setCustomName(fullTitle)
+            head.setCustomName(fullTitle)
 
             val pointsText = Text.literal("Points: ")
                 .setStyle(Style.EMPTY.withItalic(false))
@@ -305,49 +308,32 @@ object PlayerHuntsGui {
                 .setStyle(Style.EMPTY.withItalic(false))
                 .styled { it.withColor(Formatting.GREEN) }
             val loreLine = pointsText.append(pointsValue)
-            CustomGui.setItemLore(defaultHead, listOf(loreLine))
+            CustomGui.setItemLore(head, listOf(loreLine))
 
-            layout[slot] = defaultHead
+            layout[slot] = head
 
-            // Update the head asynchronously
-            CompletableFuture.supplyAsync {
-                logDebug("DEBUG: Checking if player '$playerName' is online", "cobblehunts")
-                player.server.playerManager.getPlayer(playerName)
-            }.thenCompose { onlinePlayer ->
-                if (onlinePlayer != null) {
-                    logDebug("DEBUG: Player '$playerName' is online; using their gameProfile", "cobblehunts")
-                    CompletableFuture.completedFuture(onlinePlayer.gameProfile)
-                } else {
-                    logDebug("DEBUG: Player '$playerName' is offline; checking userCache", "cobblehunts")
-                    val cachedProfile = player.server.userCache?.findByName(playerName)?.orElse(null)
-                    if (cachedProfile != null && cachedProfile.properties.containsKey("textures") &&
-                        cachedProfile.properties["textures"]!!.isNotEmpty()
-                    ) {
-                        logDebug("DEBUG: Found valid cached profile for '$playerName' with textures", "cobblehunts")
-                        CompletableFuture.completedFuture(cachedProfile)
-                    } else {
-                        logDebug("DEBUG: No valid cached profile for '$playerName', fetching from Mojang API", "cobblehunts")
-                        // fetchMojangProfile now returns a CompletableFuture<GameProfile?>
-                        fetchMojangProfile(playerName).thenApply { mojangProfile ->
-                            if (mojangProfile != null && mojangProfile.properties.containsKey("textures") &&
-                                mojangProfile.properties["textures"]!!.isNotEmpty()
-                            ) {
-                                logDebug("DEBUG: Fetched valid Mojang profile for '$playerName'", "cobblehunts")
-                                mojangProfile
-                            } else {
-                                logDebug("DEBUG: Failed to fetch Mojang profile for '$playerName', using offline profile", "cobblehunts")
-                                GameProfile(java.util.UUID.nameUUIDFromBytes("OfflinePlayer:$playerName".toByteArray()), playerName)
-                            }
-                        }
-                    }
+            // Set initial profile based on stored texture or offline UUID
+            val offlineUUID = java.util.UUID.nameUUIDFromBytes("OfflinePlayer:$playerName".toByteArray())
+            val initialProfile = if (storedTexture != null) {
+                GameProfile(offlineUUID, playerName).apply {
+                    properties.put("textures", Property("textures", storedTexture))
                 }
-            }.thenAccept { finalProfile ->
+            } else {
+                GameProfile(offlineUUID, playerName)
+            }
+            head.set(DataComponentTypes.PROFILE, ProfileComponent(initialProfile))
+
+            // Update texture asynchronously
+            LeaderboardManager.updatePlayerTexture(playerName, player.server).thenAccept { texture ->
                 player.server.execute {
-                    // Update the head using finalProfile...
-                    val head = ItemStack(Items.PLAYER_HEAD)
+                    val finalProfile = if (texture != null) {
+                        GameProfile(offlineUUID, playerName).apply {
+                            properties.put("textures", Property("textures", texture))
+                        }
+                    } else {
+                        GameProfile(offlineUUID, playerName)
+                    }
                     head.set(DataComponentTypes.PROFILE, ProfileComponent(finalProfile))
-                    head.setCustomName(fullTitle)
-                    CustomGui.setItemLore(head, listOf(loreLine))
                     layout[slot] = head
                     CustomGui.refreshGui(player, layout)
                 }
@@ -470,14 +456,16 @@ object PlayerHuntsGui {
             }
         } else {
             val remainingCooldown = (CobbleHunts.globalCooldownEnd - currentTime) / 1000
-            layout[13] = if (remainingCooldown > 0) {
-                val timeString = formatTime(remainingCooldown.toInt())
-                ItemStack(Items.CLOCK).apply {
-                    setCustomName(Text.literal("Next Global Hunts in $timeString").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.YELLOW) })
-                }
-            } else {
-                ItemStack(Items.CLOCK).apply {
-                    setCustomName(Text.literal("Starting soon...").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.YELLOW) })
+            val timeString = if (remainingCooldown > 0) formatTime(remainingCooldown.toInt()) else "Starting soon..."
+            val n = HuntsConfig.config.activeGlobalHuntsAtOnce
+            val pokemonSlots = huntSlotMap[n] ?: listOf(13)
+            for (slot in pokemonSlots) {
+                layout[slot] = ItemStack(Items.CLOCK).apply {
+                    setCustomName(
+                        Text.literal("Next Global Hunts in $timeString")
+                            .setStyle(Style.EMPTY.withItalic(false))
+                            .styled { it.withColor(Formatting.YELLOW) }
+                    )
                 }
             }
         }

@@ -247,13 +247,13 @@ object TurnInGui {
                 // Re-fetch the player's party for a security check.
                 val party = Cobblemon.storage.getParty(player)
                 if (selectedPokemon != null && party.contains(selectedPokemon)) {
-                    println("Security check passed: Removing Pokémon ${selectedPokemon.species.name} from party.")
+                    //println("Security check passed: Removing Pokémon ${selectedPokemon.species.name} from party.")
                     // Cache the removed Pokémon for potential revert.
                     CobbleHunts.removedPokemonCache.getOrPut(player.uuid) { mutableListOf() }.add(selectedPokemon)
                     // Remove the Pokémon from the party.
                     party.remove(selectedPokemon)
                 } else {
-                    println("Security check failed: Pokémon ${selectedPokemon?.species?.name ?: "null"} not found in party!")
+                    //println("Security check failed: Pokémon ${selectedPokemon?.species?.name ?: "null"} not found in party!")
                     player.sendMessage(
                         Text.literal("Security check failed: Pokémon not found in your party.")
                             .setStyle(Style.EMPTY.withItalic(false))
@@ -292,7 +292,7 @@ object TurnInGui {
                         else -> 0
                     }
                     if (points > 0) {
-                        println("Awarding $points points to ${player.name.string}")
+                        //println("Awarding $points points to ${player.name.string}")
                         LeaderboardManager.addPoints(player.name.string, points)
                         player.sendMessage(
                             Text.literal("You earned $points Leaderboard points!")
@@ -309,15 +309,15 @@ object TurnInGui {
                         "global" -> HuntsConfig.config.globalLoot
                         else -> emptyList()
                     }
-                    println("Loot pool size for $rarity: ${lootPool.size}")
+                    //println("Loot pool size for $rarity: ${lootPool.size}")
                     val reward = selectRewardFromLootPool(lootPool)
                     if (reward != null) {
-                        println("Selected reward type: ${reward.javaClass.simpleName}")
+                        //println("Selected reward type: ${reward.javaClass.simpleName}")
                         when (reward) {
                             is ItemReward -> {
                                 val ops = RegistryOps.of(JsonOps.INSTANCE, player.server.registryManager)
                                 val itemStack = reward.serializableItemStack.toItemStack(ops)
-                                println("Giving item: ${itemStack.item.name.string}")
+                                //println("Giving item: ${itemStack.item.name.string}")
                                 player.inventory.offerOrDrop(itemStack)
                                 player.sendMessage(
                                     Text.literal("You received ${itemStack.name.string}!")
@@ -327,18 +327,18 @@ object TurnInGui {
                             }
                             is CommandReward -> {
                                 val commandToExecute = reward.command.replace("%player%", player.name.string)
-                                println("Original command: ${reward.command}")
-                                println("Executing command: $commandToExecute")
+                                //println("Original command: ${reward.command}")
+                                //println("Executing command: $commandToExecute")
                                 try {
                                     player.server.commandManager.executeWithPrefix(player.server.commandSource, commandToExecute)
-                                    println("Command executed successfully: $commandToExecute")
+                                    //println("Command executed successfully: $commandToExecute")
                                     player.sendMessage(
                                         Text.literal("Hunt completed!")
                                             .styled { it.withColor(Formatting.GREEN) },
                                         false
                                     )
                                 } catch (e: Exception) {
-                                    println("Command execution failed for: $commandToExecute with error: ${e.message}")
+                                    //println("Command execution failed for: $commandToExecute with error: ${e.message}")
                                     player.sendMessage(
                                         Text.literal("Failed to execute reward command: ${e.message}")
                                             .styled { it.withColor(Formatting.RED) },
@@ -348,7 +348,7 @@ object TurnInGui {
                             }
                         }
                     } else {
-                        println("No reward selected from loot pool for $rarity")
+                        //println("No reward selected from loot pool for $rarity")
                         player.sendMessage(
                             Text.literal("Hunt completed, but no reward was available.")
                                 .styled { it.withColor(Formatting.YELLOW) },
@@ -356,14 +356,14 @@ object TurnInGui {
                         )
                     }
                     // Complete the hunt
-                    println("Completing hunt for rarity: $rarity" + (huntIndex?.let { " #$it" } ?: ""))
+                    //println("Completing hunt for rarity: $rarity" + (huntIndex?.let { " #$it" } ?: ""))
                     if (rarity == "global" && huntIndex != null) {
                         if (HuntsConfig.config.lockGlobalHuntsOnCompletionForAllPlayers) {
                             CobbleHunts.globalCompletedHuntIndices.add(huntIndex)
-                            println("Global hunt #$huntIndex locked as completed globally.")
+                            //println("Global hunt #$huntIndex locked as completed globally.")
                         } else {
                             data.completedGlobalHunts.add(huntIndex)
-                            println("Marked global hunt #$huntIndex as completed for ${player.name.string}")
+                            //println("Marked global hunt #$huntIndex as completed for ${player.name.string}")
                         }
                     } else {
                         data.activePokemon.remove(rarity)
@@ -376,7 +376,7 @@ object TurnInGui {
                         }
                         if (cooldownTime > 0) {
                             data.cooldowns[rarity] = System.currentTimeMillis() + (cooldownTime * 1000L)
-                            println("Set cooldown for $rarity to ${cooldownTime}s")
+                            //println("Set cooldown for $rarity to ${cooldownTime}s")
                         }
                     }
                     player.closeHandledScreen()
@@ -384,7 +384,7 @@ object TurnInGui {
                         PlayerHuntsGui.openGlobalHuntsGui(player)
                     }
                 } else {
-                    println("Hunt expired or inactive for rarity: $rarity" + (huntIndex?.let { " #$it" } ?: ""))
+                    //println("Hunt expired or inactive for rarity: $rarity" + (huntIndex?.let { " #$it" } ?: ""))
                     player.sendMessage(
                         Text.literal("The hunt has expired or is no longer active.")
                             .styled { it.withColor(Formatting.RED) },
