@@ -23,7 +23,7 @@ import kotlin.random.Random
 
 object CobbleHunts : ModInitializer {
 	private val logger = LoggerFactory.getLogger("cobblehunts")
-	private const val MOD_ID = "cobblehunts"
+	const val MOD_ID = "cobblehunts"
 	private val playerData = mutableMapOf<UUID, PlayerHuntData>()
 	val removedPokemonCache = mutableMapOf<UUID, MutableList<Pokemon>>()
 	// Global hunt state variables
@@ -180,7 +180,12 @@ object CobbleHunts : ModInitializer {
 		return HuntInstance(entry, requiredGender, requiredNature, requiredIVs, selectRewardForDifficulty(difficulty))
 	}
 
+	// Only start global hunts if they are enabled via config.
 	private fun startGlobalHunt() {
+		if (!HuntsConfig.config.globalHuntsEnabled) {
+			globalHuntStates = emptyList()
+			return
+		}
 		globalCompletedHuntIndices.clear()
 		val numHunts = HuntsConfig.config.activeGlobalHuntsAtOnce
 		val endTime = System.currentTimeMillis() + HuntsConfig.config.globalTimeLimit * 1000L
@@ -206,6 +211,7 @@ object CobbleHunts : ModInitializer {
 	}
 
 
+
 	internal fun startGlobalCooldown() {
 		globalHuntStates = emptyList()
 		sharedEndTime = null
@@ -223,7 +229,9 @@ object CobbleHunts : ModInitializer {
 		}
 	}
 
+	// Only process solo hunt preview logic if solo hunts are enabled.
 	fun refreshPreviewPokemon(player: ServerPlayerEntity) {
+		if (!HuntsConfig.config.soloHuntsEnabled) return
 		val data = getPlayerData(player)
 		listOf("easy", "normal", "medium", "hard").forEach { difficulty ->
 			if (!isOnCooldown(player, difficulty)
@@ -237,6 +245,7 @@ object CobbleHunts : ModInitializer {
 		}
 	}
 
+
 	fun setPreviewPokemon(player: ServerPlayerEntity, difficulty: String, instance: HuntInstance) {
 		getPlayerData(player).previewPokemon[difficulty] = instance
 	}
@@ -244,10 +253,12 @@ object CobbleHunts : ModInitializer {
 	fun getPreviewPokemon(player: ServerPlayerEntity, difficulty: String): HuntInstance? =
 		getPlayerData(player).previewPokemon[difficulty]
 
+	// Only activate solo missions if solo hunts are enabled.
 	fun activateMission(player: ServerPlayerEntity, difficulty: String, instance: HuntInstance) {
+		if (!HuntsConfig.config.soloHuntsEnabled) return
 		val data = getPlayerData(player)
 		data.activePokemon[difficulty] = instance
-		// Record the hunt start time if the config flag is enabled (or always record if you prefer)
+		// Record the hunt start time (or always record if you prefer)
 		instance.startTime = System.currentTimeMillis()
 		instance.endTime = when (difficulty) {
 			"easy"   -> HuntsConfig.config.soloEasyTimeLimit
@@ -258,6 +269,7 @@ object CobbleHunts : ModInitializer {
 		}.takeIf { it > 0 }?.let { System.currentTimeMillis() + it * 1000L }
 		data.previewPokemon.remove(difficulty)
 	}
+
 
 
 	fun getPlayerParty(player: ServerPlayerEntity): List<Pokemon> =

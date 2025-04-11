@@ -760,13 +760,13 @@ object HuntsGlobalSettingsGui {
         val mode = playerTimerModes[player] ?: TimerMode.COOLDOWN
         val layout = MutableList(54) { GuiHelpers.createFillerPane() }
 
-        // Center glass column (unchanged)
+        // Center glass column
         for (row in 1..4) {
             val slot = row * 9 + 4 // Slots 13, 22, 31, 40
             layout[slot] = ItemStack(Items.WHITE_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
         }
 
-        // Place sections with updated slots
+        // Add timer and active hunts sections
         addTimerSection(layout, "Solo Easy", "soloEasy", mode, Slots.SOLO_EASY_DECREASE, Slots.SOLO_EASY_DISPLAY, Slots.SOLO_EASY_INCREASE)
         addTimerSection(layout, "Solo Hard", "soloHard", mode, Slots.SOLO_HARD_DECREASE, Slots.SOLO_HARD_DISPLAY, Slots.SOLO_HARD_INCREASE)
         addTimerSection(layout, "Solo Normal", "soloNormal", mode, Slots.SOLO_NORMAL_DECREASE, Slots.SOLO_NORMAL_DISPLAY, Slots.SOLO_NORMAL_INCREASE)
@@ -806,7 +806,15 @@ object HuntsGlobalSettingsGui {
     ) {
         val label = if (mode == TimerMode.COOLDOWN) "$displayPrefix Cooldown" else "$displayPrefix Time Limit"
         val currentValue = getTimerValue(configKey, mode)
-        layout[decreaseSlot] = createAdjustmentButton("Decrease", -1, -10, Textures.DECREASE, label, currentValue)
+        layout[decreaseSlot] = createAdjustmentButton(
+            "Decrease",
+            -1,
+            if (configKey == "global") -10 else -10,
+            Textures.DECREASE,
+            label,
+            currentValue,
+            isTimer = true
+        )
         layout[displaySlot] = ItemStack(if (mode == TimerMode.COOLDOWN) Items.CLOCK else Items.COMPASS).apply {
             setCustomName(
                 Text.literal(label).styled { it.withColor(Formatting.GRAY).withItalic(false) }
@@ -821,81 +829,139 @@ object HuntsGlobalSettingsGui {
                 )
             )
         }
-        // For global timer adjustments, only process left-click
-        if (configKey == "global") {
-            layout[increaseSlot] = createAdjustmentButton("Increase", 1, 0, Textures.INCREASE, label, currentValue)
-        } else {
-            layout[increaseSlot] = createAdjustmentButton("Increase", 1, 10, Textures.INCREASE, label, currentValue)
-        }
+        layout[increaseSlot] = createAdjustmentButton(
+            "Increase",
+            1,
+            if (configKey == "global") 10 else 10,
+            Textures.INCREASE,
+            label,
+            currentValue,
+            isTimer = true
+        )
     }
 
     private fun addActiveGlobalHuntsSection(layout: MutableList<ItemStack>, decreaseSlot: Int, displaySlot: Int, increaseSlot: Int) {
         val label = "Active Global Hunts"
         val currentValue = HuntsConfig.config.activeGlobalHuntsAtOnce
-        layout[decreaseSlot] = createAdjustmentButton("Decrease", -1, 0, Textures.DECREASE, label, currentValue)
+        layout[decreaseSlot] = createAdjustmentButton(
+            "Decrease", -1, -5, Textures.DECREASE, label, currentValue, isTimer = false, minValue = 1, maxValue = 7
+        )
         layout[displaySlot] = ItemStack(Items.BOOK).apply {
             setCustomName(
                 Text.literal("$label: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
                     .append(Text.literal("$currentValue").styled { it.withColor(Formatting.AQUA).withItalic(false) })
             )
-            CustomGui.setItemLore(this, listOf(Text.literal("Number of active global hunts at once").styled { it.withColor(Formatting.DARK_GRAY).withItalic(false) }))
+            val lore = mutableListOf<Text>()
+            lore.add(Text.literal("Number of active global hunts at once").styled { it.withColor(Formatting.DARK_GRAY).withItalic(false) })
+            if (currentValue == 1) {
+                lore.add(Text.literal("Minimum value").styled { it.withColor(Formatting.RED).withItalic(false) })
+            } else if (currentValue == 7) {
+                lore.add(Text.literal("Maximum value").styled { it.withColor(Formatting.RED).withItalic(false) })
+            }
+            CustomGui.setItemLore(this, lore)
         }
-        layout[increaseSlot] = createAdjustmentButton("Increase", 1, 0, Textures.INCREASE, label, currentValue)
+        layout[increaseSlot] = createAdjustmentButton(
+            "Increase", 1, 5, Textures.INCREASE, label, currentValue, isTimer = false, minValue = 1, maxValue = 7
+        )
     }
 
-    private fun createAdjustmentButton(name: String, leftDelta: Int, rightDelta: Int, textureValue: String, label: String, currentValue: Int): ItemStack =
-        GuiHelpers.createPlayerHeadButton(
+    private fun createAdjustmentButton(
+        name: String,
+        leftDelta: Int,
+        rightDelta: Int,
+        textureValue: String,
+        label: String,
+        currentValue: Int,
+        isTimer: Boolean,
+        minValue: Int? = null,
+        maxValue: Int? = null
+    ): ItemStack {
+        val unit = if (isTimer) " seconds" else ""
+        val lore = mutableListOf<Text>()
+        lore.add(Text.literal("$label: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
+            .append(Text.literal("$currentValue$unit").styled { it.withColor(Formatting.AQUA).withItalic(false) }))
+        lore.add(Text.literal("Left-click: ").styled { it.withColor(Formatting.YELLOW).withItalic(false) }
+            .append(Text.literal("${if (leftDelta > 0) "+" else ""}$leftDelta$unit").styled { it.withColor(if (leftDelta > 0) Formatting.GREEN else Formatting.RED).withItalic(false) }))
+        lore.add(Text.literal("Right-click: ").styled { it.withColor(Formatting.YELLOW).withItalic(false) }
+            .append(Text.literal("${if (rightDelta > 0) "+" else ""}$rightDelta$unit").styled { it.withColor(if (rightDelta > 0) Formatting.GREEN else Formatting.RED).withItalic(false) }))
+
+        // Indicate if limits are reached
+        if (minValue != null && leftDelta < 0 && currentValue <= minValue) {
+            lore.add(Text.literal("Minimum value reached").styled { it.withColor(Formatting.RED).withItalic(false) })
+        }
+        if (maxValue != null && leftDelta > 0 && currentValue >= maxValue) {
+            lore.add(Text.literal("Maximum value reached").styled { it.withColor(Formatting.RED).withItalic(false) })
+        }
+
+        return GuiHelpers.createPlayerHeadButton(
             name,
             Text.literal(name).styled { it.withColor(if (leftDelta > 0) Formatting.GREEN else Formatting.RED) },
-            listOf(
-                Text.literal("$label: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
-                    .append(
-                        Text.literal("$currentValue seconds")
-                            .styled { it.withColor(Formatting.AQUA).withItalic(false) }),
-                Text.literal("Left-click: ").styled { it.withColor(Formatting.YELLOW).withItalic(false) }
-                    .append(
-                        Text.literal("${if (leftDelta > 0) "+" else ""}$leftDelta seconds").styled {
-                            it.withColor(if (leftDelta > 0) Formatting.GREEN else Formatting.RED).withItalic(false)
-                        }),
-                Text.literal("Right-click: ").styled { it.withColor(Formatting.YELLOW).withItalic(false) }
-                    .append(
-                        Text.literal("${if (rightDelta > 0) "+" else ""}$rightDelta seconds").styled {
-                            it.withColor(if (rightDelta > 0) Formatting.GREEN else Formatting.RED).withItalic(false)
-                        })
-            ),
+            lore,
             textureValue
         )
+    }
 
     private fun handleInteraction(context: InteractionContext, player: ServerPlayerEntity) {
         val mode = playerTimerModes[player] ?: TimerMode.COOLDOWN
-        val delta = when (context.clickType) {
-            ClickType.LEFT -> 1
-            ClickType.RIGHT -> 10
-            else -> 0
-        }
         when (context.slotIndex) {
-
             Slots.TOGGLE_MODE -> {
                 val newMode = if (mode == TimerMode.COOLDOWN) TimerMode.TIME_LIMIT else TimerMode.COOLDOWN
                 playerTimerModes[player] = newMode
                 CustomGui.refreshGui(player, generateLayout(player))
                 player.sendMessage(
                     Text.literal("Switched to editing ").styled { it.withColor(Formatting.YELLOW) }
-                        .append(Text.literal(if (newMode == TimerMode.COOLDOWN) "Cooldowns" else "Time Limits").styled { it.withColor(Formatting.AQUA) }), true
+                        .append(Text.literal(if (newMode == TimerMode.COOLDOWN) "Cooldowns" else "Time Limits").styled { it.withColor(Formatting.AQUA) }),
+                    true
                 )
             }
-            Slots.SOLO_EASY_DECREASE -> adjustTimer(player, "soloEasy", mode, -delta)
-            Slots.SOLO_EASY_INCREASE -> adjustTimer(player, "soloEasy", mode, delta)
-            Slots.SOLO_NORMAL_DECREASE -> adjustTimer(player, "soloNormal", mode, -delta)
-            Slots.SOLO_NORMAL_INCREASE -> adjustTimer(player, "soloNormal", mode, delta)
-            Slots.SOLO_MEDIUM_DECREASE -> adjustTimer(player, "soloMedium", mode, -delta)
-            Slots.SOLO_MEDIUM_INCREASE -> adjustTimer(player, "soloMedium", mode, delta)
-            Slots.SOLO_HARD_DECREASE -> adjustTimer(player, "soloHard", mode, -delta)
-            Slots.SOLO_HARD_INCREASE -> adjustTimer(player, "soloHard", mode, delta)
-            Slots.GLOBAL_DECREASE -> if (context.clickType == ClickType.LEFT) adjustTimer(player, "global", mode, -1)
-            Slots.GLOBAL_INCREASE -> if (context.clickType == ClickType.LEFT) adjustTimer(player, "global", mode, 1)
-            Slots.ACTIVE_GLOBAL_DECREASE -> if (context.clickType == ClickType.LEFT) adjustActiveGlobalHunts(player, -1)
-            Slots.ACTIVE_GLOBAL_INCREASE -> if (context.clickType == ClickType.LEFT) adjustActiveGlobalHunts(player, 1)
+            Slots.SOLO_EASY_DECREASE -> {
+                val delta = if (context.clickType == ClickType.LEFT) -1 else if (context.clickType == ClickType.RIGHT) -10 else 0
+                if (delta != 0) adjustTimer(player, "soloEasy", mode, delta)
+            }
+            Slots.SOLO_EASY_INCREASE -> {
+                val delta = if (context.clickType == ClickType.LEFT) 1 else if (context.clickType == ClickType.RIGHT) 10 else 0
+                if (delta != 0) adjustTimer(player, "soloEasy", mode, delta)
+            }
+            Slots.SOLO_NORMAL_DECREASE -> {
+                val delta = if (context.clickType == ClickType.LEFT) -1 else if (context.clickType == ClickType.RIGHT) -10 else 0
+                if (delta != 0) adjustTimer(player, "soloNormal", mode, delta)
+            }
+            Slots.SOLO_NORMAL_INCREASE -> {
+                val delta = if (context.clickType == ClickType.LEFT) 1 else if (context.clickType == ClickType.RIGHT) 10 else 0
+                if (delta != 0) adjustTimer(player, "soloNormal", mode, delta)
+            }
+            Slots.SOLO_MEDIUM_DECREASE -> {
+                val delta = if (context.clickType == ClickType.LEFT) -1 else if (context.clickType == ClickType.RIGHT) -10 else 0
+                if (delta != 0) adjustTimer(player, "soloMedium", mode, delta)
+            }
+            Slots.SOLO_MEDIUM_INCREASE -> {
+                val delta = if (context.clickType == ClickType.LEFT) 1 else if (context.clickType == ClickType.RIGHT) 10 else 0
+                if (delta != 0) adjustTimer(player, "soloMedium", mode, delta)
+            }
+            Slots.SOLO_HARD_DECREASE -> {
+                val delta = if (context.clickType == ClickType.LEFT) -1 else if (context.clickType == ClickType.RIGHT) -10 else 0
+                if (delta != 0) adjustTimer(player, "soloHard", mode, delta)
+            }
+            Slots.SOLO_HARD_INCREASE -> {
+                val delta = if (context.clickType == ClickType.LEFT) 1 else if (context.clickType == ClickType.RIGHT) 10 else 0
+                if (delta != 0) adjustTimer(player, "soloHard", mode, delta)
+            }
+            Slots.GLOBAL_DECREASE -> {
+                val delta = if (context.clickType == ClickType.LEFT) -1 else if (context.clickType == ClickType.RIGHT) -5 else 0
+                if (delta != 0) adjustTimer(player, "global", mode, delta)
+            }
+            Slots.GLOBAL_INCREASE -> {
+                val delta = if (context.clickType == ClickType.LEFT) 1 else if (context.clickType == ClickType.RIGHT) 5 else 0
+                if (delta != 0) adjustTimer(player, "global", mode, delta)
+            }
+            Slots.ACTIVE_GLOBAL_DECREASE -> {
+                val delta = if (context.clickType == ClickType.LEFT) -1 else if (context.clickType == ClickType.RIGHT) -5 else 0
+                if (delta != 0) adjustActiveGlobalHunts(player, delta)
+            }
+            Slots.ACTIVE_GLOBAL_INCREASE -> {
+                val delta = if (context.clickType == ClickType.LEFT) 1 else if (context.clickType == ClickType.RIGHT) 5 else 0
+                if (delta != 0) adjustActiveGlobalHunts(player, delta)
+            }
             Slots.BACK -> HuntsEditorMainGui.openGui(player)
         }
     }
@@ -937,16 +1003,21 @@ object HuntsGlobalSettingsGui {
         val label = if (mode == TimerMode.COOLDOWN) "$configKey Cooldown" else "$configKey Time Limit"
         player.sendMessage(
             Text.literal("Set ${label.replaceFirstChar { it.titlecase() }} to ").styled { it.withColor(Formatting.GRAY) }
-                .append(Text.literal("$newValue seconds").styled { it.withColor(Formatting.AQUA) }), true
+                .append(Text.literal("$newValue seconds").styled { it.withColor(Formatting.AQUA) }),
+            true
         )
     }
 
     private fun adjustActiveGlobalHunts(player: ServerPlayerEntity, delta: Int) {
         val currentValue = HuntsConfig.config.activeGlobalHuntsAtOnce
-        val newValue = (currentValue + delta).coerceAtLeast(1)
+        val newValue = (currentValue + delta).coerceIn(1, 7)
         HuntsConfig.config.activeGlobalHuntsAtOnce = newValue
         HuntsConfig.saveConfig()
         CustomGui.refreshGui(player, generateLayout(player))
-        player.sendMessage(Text.literal("Set Active Global Hunts At Once to $newValue").styled { it.withColor(Formatting.AQUA) }, true)
+        player.sendMessage(
+            Text.literal("Set Active Global Hunts At Once to ").styled { it.withColor(Formatting.GRAY) }
+                .append(Text.literal("$newValue").styled { it.withColor(Formatting.AQUA) }),
+            true
+        )
     }
 }

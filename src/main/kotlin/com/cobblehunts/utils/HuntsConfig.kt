@@ -104,7 +104,7 @@ data class HuntPermissions(
  * The non-pool settings are at the top, while all the spawn/loot pools are at the bottom.
  */
 data class HuntsConfigData(
-    override val version: String = "1.0.1",
+    override val version: String = "1.0.2",
     override val configId: String = "cobblehunts",
     var debugEnabled: Boolean = false,
     var activeGlobalHuntsAtOnce: Int = 4,
@@ -123,10 +123,16 @@ data class HuntsConfigData(
     var soloNormalPoints: Int = 15,
     var soloMediumPoints: Int = 25,
     var soloHardPoints: Int = 40,
-    // New nested permissions section.
+    var globalHuntsEnabled: Boolean = true,
+    var soloHuntsEnabled: Boolean = true,
+    var soloEasyEnabled: Boolean = true,
+    var soloNormalEnabled: Boolean = true,
+    var soloMediumEnabled: Boolean = true,
+    var soloHardEnabled: Boolean = true,
     var permissions: HuntPermissions = HuntPermissions(),
     // Spawn/loot pools moved to the bottom
     var enableLeaderboard: Boolean = true,
+    var takeMonOnTurnIn: Boolean = true,
     var onlyAllowTurnInIfCapturedAfterHuntStarted: Boolean = true,
     var lockGlobalHuntsOnCompletionForAllPlayers: Boolean = true,
     var globalPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
@@ -288,7 +294,7 @@ object HuntsConfig {
     }
 
     private val configManager = ConfigManager(
-        currentVersion = "1.0.1",
+        currentVersion = "1.0.2",
         defaultConfig = createDefaultConfig(),
         configClass = HuntsConfigData::class,
         metadata = ConfigMetadata(

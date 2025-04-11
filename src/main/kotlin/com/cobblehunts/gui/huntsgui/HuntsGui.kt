@@ -50,6 +50,7 @@ object PlayerHuntsGui {
     }
 
     private val dynamicGuiData = mutableMapOf<ServerPlayerEntity, Pair<String, MutableList<ItemStack>>>()
+    private var mainHuntMapping: Map<Int, String> = emptyMap()
 
     // Maps for loot pool pagination
     private val playerLootDifficulties = mutableMapOf<ServerPlayerEntity, String>()
@@ -61,6 +62,22 @@ object PlayerHuntsGui {
         const val NEXT_PAGE = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOGU0MDNjYzdiYmFjNzM2NzBiZDU0M2Y2YjA5NTViYWU3YjhlOTEyM2Q4M2JkNzYwZjYyMDRjNWFmZDhiZTdlMSJ9fX0="
     }
 
+    private fun getEnabledSoloDifficulties(): List<String> {
+        val config = HuntsConfig.config
+        return listOf(
+            "easy" to config.soloEasyEnabled,
+            "normal" to config.soloNormalEnabled,
+            "medium" to config.soloMediumEnabled,
+            "hard" to config.soloHardEnabled
+        ).filter { it.second }.map { it.first }
+    }
+
+    private val soloHuntSlotMap = mapOf(
+        1 to listOf(13),
+        2 to listOf(12, 14),
+        3 to listOf(11, 13, 15),
+        4 to listOf(10, 12, 14, 16)
+    )
     // Predefined slot mappings for different numbers of global hunts
     private val huntSlotMap = mapOf(
         1 to listOf(13),
@@ -165,32 +182,24 @@ object PlayerHuntsGui {
 
     /** Updates only the dynamic items (indicators and Pokémon) in the solo hunts GUI. */
     private fun updateSoloDynamicItems(player: ServerPlayerEntity, layout: MutableList<ItemStack>) {
-        val data = CobbleHunts.getPlayerData(player)
-        val difficulties = listOf("easy", "normal", "medium", "hard")
-        val indicatorSlots = listOf(
-            SoloSlots.INDICATOR_EASY,
-            SoloSlots.INDICATOR_NORMAL,
-            SoloSlots.INDICATOR_MEDIUM,
-            SoloSlots.INDICATOR_HARD
-        )
-        val pokemonSlots = listOf(
-            SoloSlots.POKEMON_EASY,
-            SoloSlots.POKEMON_NORMAL,
-            SoloSlots.POKEMON_MEDIUM,
-            SoloSlots.POKEMON_HARD
-        )
+        val enabledDifficulties = getEnabledSoloDifficulties()
+        val count = enabledDifficulties.size
+        val slots = soloHuntSlotMap[count] ?: listOf()
 
-        difficulties.forEachIndexed { index, difficulty ->
+        enabledDifficulties.forEachIndexed { index, difficulty ->
+            val indicatorSlot = slots[index] - 9
+            val data = CobbleHunts.getPlayerData(player)
             val activeInstance = data.activePokemon[difficulty]
             val isActive = activeInstance != null && (activeInstance.endTime == null || System.currentTimeMillis() < activeInstance.endTime!!)
-            layout[indicatorSlots[index]] = if (isActive) {
+            layout[indicatorSlot] = if (isActive) {
                 ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
             } else {
                 ItemStack(Items.BLACK_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
             }
-            layout[pokemonSlots[index]] = getSoloDynamicItem(player, difficulty)
+            layout[slots[index]] = getSoloDynamicItem(player, difficulty)
         }
     }
+
 
     fun openMainGui(player: ServerPlayerEntity) {
         dynamicGuiData.remove(player)
@@ -206,54 +215,101 @@ object PlayerHuntsGui {
 
     private fun generateMainLayout(): List<ItemStack> {
         val layout = MutableList(27) { createFillerPane() }
-        layout[MainSlots.GLOBAL] = CustomGui.createPlayerHeadButton(
-            textureName = "GlobalHunts",
-            title = Text.literal("Global Hunts").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) },
-            lore = listOf(Text.literal("Click to view global hunts").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.YELLOW) }),
-            textureValue = MainTextures.GLOBAL
-        )
-        layout[MainSlots.SOLO] = CustomGui.createPlayerHeadButton(
-            textureName = "SoloHunts",
-            title = Text.literal("Solo Hunts").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.AQUA) },
-            lore = listOf(Text.literal("Click to view solo hunts").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.YELLOW) }),
-            textureValue = MainTextures.SOLO
-        )
+        val globalEnabled = HuntsConfig.config.globalHuntsEnabled
+        val soloEnabled = HuntsConfig.config.soloHuntsEnabled
+        val mapping = mutableMapOf<Int, String>()
+
+        // If both types are enabled, stick with the original slots.
+        if (globalEnabled && soloEnabled) {
+            layout[MainSlots.GLOBAL] = CustomGui.createPlayerHeadButton(
+                textureName = "GlobalHunts",
+                title = Text.literal("Global Hunts").setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.GREEN) },
+                lore = listOf(Text.literal("Click to view global hunts").setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.YELLOW) }),
+                textureValue = MainTextures.GLOBAL
+            )
+            mapping[MainSlots.GLOBAL] = "global"
+
+            layout[MainSlots.SOLO] = CustomGui.createPlayerHeadButton(
+                textureName = "SoloHunts",
+                title = Text.literal("Solo Hunts").setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.AQUA) },
+                lore = listOf(Text.literal("Click to view solo hunts").setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.YELLOW) }),
+                textureValue = MainTextures.SOLO
+            )
+            mapping[MainSlots.SOLO] = "solo"
+        } else if (globalEnabled && !soloEnabled) {
+            // Only global enabled – move to center slot 13.
+            layout[13] = CustomGui.createPlayerHeadButton(
+                textureName = "GlobalHunts",
+                title = Text.literal("Global Hunts").setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.GREEN) },
+                lore = listOf(Text.literal("Click to view global hunts").setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.YELLOW) }),
+                textureValue = MainTextures.GLOBAL
+            )
+            mapping[13] = "global"
+        } else if (!globalEnabled && soloEnabled) {
+            // Only solo enabled – move to center slot 13.
+            layout[13] = CustomGui.createPlayerHeadButton(
+                textureName = "SoloHunts",
+                title = Text.literal("Solo Hunts").setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.AQUA) },
+                lore = listOf(Text.literal("Click to view solo hunts").setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.YELLOW) }),
+                textureValue = MainTextures.SOLO
+            )
+            mapping[13] = "solo"
+        }
+        // Leaderboard remains in its set slot.
         if (HuntsConfig.config.enableLeaderboard) {
             layout[MainSlots.LEADERBOARD] = CustomGui.createPlayerHeadButton(
                 textureName = "Leaderboard",
-                title = Text.literal("Leaderboard").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GOLD) },
-                lore = listOf(Text.literal("View top players").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.YELLOW) }),
+                title = Text.literal("Leaderboard").setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.GOLD) },
+                lore = listOf(Text.literal("View top players").setStyle(Style.EMPTY.withItalic(false))
+                    .styled { it.withColor(Formatting.YELLOW) }),
                 textureValue = MainTextures.LEADERBOARD
             )
         } else {
             layout[MainSlots.LEADERBOARD] = ItemStack(Items.GRAY_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
         }
+        mainHuntMapping = mapping
         return layout
     }
 
+
     private fun handleMainInteraction(context: InteractionContext, player: ServerPlayerEntity) {
-        when (context.slotIndex) {
-            MainSlots.GLOBAL -> {
-                if (!CobbleHunts.hasHuntPermission(player, "global")) {
-                    player.sendMessage(
-                        Text.literal("You do not have permission for Global Hunts!")
-                            .setStyle(Style.EMPTY.withItalic(false))
-                            .styled { it.withColor(Formatting.RED) },
-                        false
-                    )
-                    return
+        val slot = context.slotIndex
+        // Check if the clicked slot corresponds to a hunt button.
+        if (mainHuntMapping.containsKey(slot)) {
+            when (mainHuntMapping[slot]) {
+                "global" -> {
+                    if (!CobbleHunts.hasHuntPermission(player, "global")) {
+                        player.sendMessage(
+                            Text.literal("You do not have permission for Global Hunts!")
+                                .setStyle(Style.EMPTY.withItalic(false))
+                                .styled { it.withColor(Formatting.RED) },
+                            false
+                        )
+                        return
+                    }
+                    openGlobalHuntsGui(player)
                 }
-                openGlobalHuntsGui(player)
+                "solo" -> openSoloHuntsGui(player)
             }
-            MainSlots.SOLO -> openSoloHuntsGui(player)
-            MainSlots.LEADERBOARD -> {
-                if (HuntsConfig.config.enableLeaderboard) {
-                    openLeaderboardGui(player)
-                }
-                // Else, do nothing if enableLeaderboard is false
+            return
+        }
+        // Existing handling for leaderboard button.
+        if (slot == MainSlots.LEADERBOARD) {
+            if (HuntsConfig.config.enableLeaderboard) {
+                openLeaderboardGui(player)
             }
         }
     }
+
 
 
     fun openLeaderboardGui(player: ServerPlayerEntity) {
@@ -540,53 +596,47 @@ object PlayerHuntsGui {
 
     private fun generateSoloLayout(player: ServerPlayerEntity): List<ItemStack> {
         val layout = MutableList(27) { createFillerPane() }
-        val difficulties = listOf("easy", "normal", "medium", "hard")
-        val indicatorSlots = listOf(
-            SoloSlots.INDICATOR_EASY,
-            SoloSlots.INDICATOR_NORMAL,
-            SoloSlots.INDICATOR_MEDIUM,
-            SoloSlots.INDICATOR_HARD
-        )
-        val pokemonSlots = listOf(
-            SoloSlots.POKEMON_EASY,
-            SoloSlots.POKEMON_NORMAL,
-            SoloSlots.POKEMON_MEDIUM,
-            SoloSlots.POKEMON_HARD
-        )
-        val data = CobbleHunts.getPlayerData(player)
 
-        difficulties.forEachIndexed { index, difficulty ->
+        // Retrieve only enabled solo difficulties
+        val enabledDifficulties = getEnabledSoloDifficulties()
+        val count = enabledDifficulties.size
+        val slots = soloHuntSlotMap[count] ?: listOf()
+
+        // For each enabled difficulty, compute the indicator position (use slot - 9)
+        // and get the dynamic item from the previous method.
+        for ((index, difficulty) in enabledDifficulties.withIndex()) {
+            val indicatorSlot = slots[index] - 9
+            val data = CobbleHunts.getPlayerData(player)
             val activeInstance = data.activePokemon[difficulty]
             val isActive = activeInstance != null && (activeInstance.endTime == null || System.currentTimeMillis() < activeInstance.endTime!!)
-            layout[indicatorSlots[index]] = if (isActive) {
+            layout[indicatorSlot] = if (isActive) {
                 ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
             } else {
                 ItemStack(Items.BLACK_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
             }
-            layout[pokemonSlots[index]] = getSoloDynamicItem(player, difficulty)
+            layout[slots[index]] = getSoloDynamicItem(player, difficulty)
         }
 
+        // Keep your Back button slot the same – for example, slot 22.
         layout[SoloSlots.BACK] = CustomGui.createPlayerHeadButton(
             textureName = "Back",
             title = Text.literal("Back").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.YELLOW) },
             lore = listOf(Text.literal("Return to main menu").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }),
             textureValue = SoloTextures.BACK
         )
+
         return layout
     }
 
-    private fun handleSoloInteraction(context: InteractionContext, player: ServerPlayerEntity) {
-        val difficulties = listOf("easy", "normal", "medium", "hard")
-        val pokemonSlots = listOf(
-            SoloSlots.POKEMON_EASY,
-            SoloSlots.POKEMON_NORMAL,
-            SoloSlots.POKEMON_MEDIUM,
-            SoloSlots.POKEMON_HARD
-        )
 
-        if (context.slotIndex in pokemonSlots) {
-            val index = pokemonSlots.indexOf(context.slotIndex)
-            val difficulty = difficulties[index]
+    private fun handleSoloInteraction(context: InteractionContext, player: ServerPlayerEntity) {
+        val enabledDifficulties = getEnabledSoloDifficulties()
+        val count = enabledDifficulties.size
+        val slots = soloHuntSlotMap[count] ?: listOf()
+
+        if (context.slotIndex in slots) {
+            val index = slots.indexOf(context.slotIndex)
+            val difficulty = enabledDifficulties[index]
             if (!CobbleHunts.hasHuntPermission(player, difficulty)) {
                 player.sendMessage(
                     Text.literal("You do not have permission for $difficulty hunts!")
@@ -604,19 +654,25 @@ object PlayerHuntsGui {
             }
             if (activeInstance == null) {
                 if (CobbleHunts.isOnCooldown(player, difficulty)) {
-                    player.sendMessage(Text.literal("You are on cooldown for $difficulty missions!").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.RED) }, false)
+                    player.sendMessage(
+                        Text.literal("You are on cooldown for $difficulty missions!")
+                            .setStyle(Style.EMPTY.withItalic(false))
+                            .styled { it.withColor(Formatting.RED) },
+                        false
+                    )
                 } else {
                     val instance = CobbleHunts.getPreviewPokemon(player, difficulty)
                     if (instance != null) {
                         CobbleHunts.activateMission(player, difficulty, instance)
-                        player.sendMessage(Text.literal("Activated $difficulty mission for ${instance.entry.species}!").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }, false)
-                        dynamicGuiData[player]?.let { (guiType, _) ->
-                            if (guiType == "solo") {
-                                val newLayout = generateSoloLayout(player).toMutableList()
-                                dynamicGuiData[player] = Pair("solo", newLayout)
-                                CustomGui.refreshGui(player, newLayout)
-                            }
-                        }
+                        player.sendMessage(
+                            Text.literal("Activated $difficulty mission for ${instance.entry.species}!")
+                                .setStyle(Style.EMPTY.withItalic(false))
+                                .styled { it.withColor(Formatting.GREEN) },
+                            false
+                        )
+                        val newLayout = generateSoloLayout(player).toMutableList()
+                        dynamicGuiData[player] = Pair("solo", newLayout)
+                        CustomGui.refreshGui(player, newLayout)
                     }
                 }
             } else {
@@ -626,6 +682,7 @@ object PlayerHuntsGui {
             openMainGui(player)
         }
     }
+
 
     private fun createActivePokemonItem(instance: HuntInstance, difficulty: String): ItemStack {
         val entry = instance.entry
