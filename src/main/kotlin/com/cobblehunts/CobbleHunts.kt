@@ -1,19 +1,21 @@
 package com.cobblehunts
 
-import com.cobblehunts.gui.huntsgui.PlayerHuntsGui
+
+import com.cobblehunts.gui.HuntsGui
 import com.cobblehunts.utils.*
 import com.cobblemon.mod.common.Cobblemon
 import com.cobblemon.mod.common.api.pokemon.Natures
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties
 import com.cobblemon.mod.common.pokemon.Pokemon
+import com.everlastingutils.colors.KyoriHelper
 import com.everlastingutils.command.CommandManager
 import com.everlastingutils.scheduling.SchedulerManager
 import com.everlastingutils.utils.LogDebug
-import com.mojang.authlib.GameProfile
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.loader.api.FabricLoader
+import net.minecraft.server.MinecraftServer
 import net.minecraft.server.network.ServerPlayerEntity
 import org.slf4j.LoggerFactory
 import java.util.UUID
@@ -67,7 +69,7 @@ object CobbleHunts : ModInitializer {
 
 		ServerLifecycleEvents.SERVER_STARTED.register { server ->
 			SchedulerManager.scheduleAtFixedRate("cobblehunts-gui-refresh", server, 0, 1, TimeUnit.SECONDS) {
-				PlayerHuntsGui.refreshDynamicGuis()
+				HuntsGui.refreshDynamicGuis()
 			}
 			SchedulerManager.scheduleAtFixedRate("cobblehunts-global-check", server, 0, 1, TimeUnit.SECONDS) {
 				checkGlobalHuntState()
@@ -202,7 +204,7 @@ object CobbleHunts : ModInitializer {
 					startTime = System.currentTimeMillis()
 				}
 			} ?: run {
-				logger.warn("No Pokémon available for global hunt #$i")
+				LogDebug.debug("No Pokémon available for global hunt #$i", MOD_ID)
 				null
 			}
 		}
@@ -211,8 +213,7 @@ object CobbleHunts : ModInitializer {
 	}
 
 
-
-	internal fun startGlobalCooldown() {
+	private fun startGlobalCooldown() {
 		globalHuntStates = emptyList()
 		sharedEndTime = null
 		globalCooldownEnd = System.currentTimeMillis() + HuntsConfig.config.globalCooldown * 1000L
@@ -220,27 +221,41 @@ object CobbleHunts : ModInitializer {
 
 	private fun checkGlobalHuntState() {
 		val currentTime = System.currentTimeMillis()
-		when {
-			sharedEndTime != null && currentTime > sharedEndTime!! -> {
-				logger.info("All global hunts have expired, starting cooldown")
+		if (globalHuntStates.isNotEmpty()) {
+			// For every global hunt, if its own end time has passed and it hasn't been marked complete, mark it.
+			globalHuntStates.withIndex().forEach { (i, hunt) ->
+				if (hunt.endTime != null && currentTime > hunt.endTime!!) {
+					globalCompletedHuntIndices.add(i)
+				}
+			}
+			// If every hunt (regardless of number) is either completed or expired, start the global cooldown.
+			if (globalHuntStates.indices.all { i -> globalCompletedHuntIndices.contains(i) }) {
+				LogDebug.debug("All global hunts have expired or been completed; starting cooldown", MOD_ID)
 				startGlobalCooldown()
 			}
-			globalHuntStates.isEmpty() && currentTime > globalCooldownEnd -> startGlobalHunt()
+		} else if (currentTime > globalCooldownEnd) {
+			// If there are no global hunts and the cooldown is over, start new hunts.
+			startGlobalHunt()
 		}
 	}
+
 
 	// Only process solo hunt preview logic if solo hunts are enabled.
 	fun refreshPreviewPokemon(player: ServerPlayerEntity) {
 		if (!HuntsConfig.config.soloHuntsEnabled) return
 		val data = getPlayerData(player)
 		listOf("easy", "normal", "medium", "hard").forEach { difficulty ->
-			if (!isOnCooldown(player, difficulty)
-				&& data.activePokemon[difficulty] == null
-				&& data.previewPokemon[difficulty] == null) {
+			if (!isOnCooldown(player, difficulty) && data.activePokemon[difficulty] == null) {
 				selectPokemonForDifficulty(difficulty)?.let { pokemon ->
-					LogDebug.debug("Generating preview for ${player.name.string} on $difficulty: ${pokemon.species}", MOD_ID)
-					setPreviewPokemon(player, difficulty, createHuntInstance(pokemon, difficulty))
-				} ?: logger.warn("No Pokémon available for $difficulty preview for ${player.name.string}")
+					val instance = createHuntInstance(pokemon, difficulty)
+					if (HuntsConfig.config.autoAcceptSoloHunts) {
+						activateMission(player, difficulty, instance)
+						LogDebug.debug("Auto-activated $difficulty hunt for ${player.name.string}: ${pokemon.species}", MOD_ID)
+					} else if (data.previewPokemon[difficulty] == null) {
+						setPreviewPokemon(player, difficulty, instance)
+						LogDebug.debug("Generated preview for ${player.name.string} on $difficulty: ${pokemon.species}", MOD_ID)
+					}
+				} ?: LogDebug.debug("No Pokémon available for $difficulty hunt for ${player.name.string}", MOD_ID)
 			}
 		}
 	}
@@ -303,7 +318,17 @@ object CobbleHunts : ModInitializer {
 			HuntsConfig.config.permissions.opLevel
 		)
 	}
-
+	fun broadcast(server: MinecraftServer, message: String, player: ServerPlayerEntity? = null) {
+		val registryWrapper = server.registryManager
+		val formatted = KyoriHelper.parseToMinecraft(message, registryWrapper)
+		if (player != null) {
+			player.sendMessage(formatted)
+		} else {
+			server.playerManager.playerList.forEach { p ->
+				p.sendMessage(formatted)
+			}
+		}
+	}
 
 }
 

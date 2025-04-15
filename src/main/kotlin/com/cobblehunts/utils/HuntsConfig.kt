@@ -104,7 +104,7 @@ data class HuntPermissions(
  * The non-pool settings are at the top, while all the spawn/loot pools are at the bottom.
  */
 data class HuntsConfigData(
-    override val version: String = "1.0.2",
+    override val version: String = "1.0.3",
     override val configId: String = "cobblehunts",
     var debugEnabled: Boolean = false,
     var activeGlobalHuntsAtOnce: Int = 4,
@@ -129,8 +129,11 @@ data class HuntsConfigData(
     var soloNormalEnabled: Boolean = true,
     var soloMediumEnabled: Boolean = true,
     var soloHardEnabled: Boolean = true,
+    var globalHuntCompletionMessage: String = "%player% has completed a global hunt for %pokemon% and received %reward%!",
+    var soloHuntCompletionMessage: String = "You received %reward%",
+    var capturedPokemonMessage: String = "You caught a %pokemon% that matches an active hunt! Use /hunts to turn it in.",
+    var autoAcceptSoloHunts: Boolean = false,
     var permissions: HuntPermissions = HuntPermissions(),
-    // Spawn/loot pools moved to the bottom
     var enableLeaderboard: Boolean = true,
     var takeMonOnTurnIn: Boolean = true,
     var onlyAllowTurnInIfCapturedAfterHuntStarted: Boolean = true,
@@ -289,12 +292,16 @@ object HuntsConfig {
             soloNormalPoints = 15,
             soloMediumPoints = 25,
             soloHardPoints = 40,
-            enableLeaderboard = true
+            enableLeaderboard = true,
+            soloHardEnabled = true,
+            autoAcceptSoloHunts = false,
+            globalHuntCompletionMessage = "%player% has completed a global hunt for %pokemon% and received %reward%!",
+            soloHuntCompletionMessage = "You received %reward%",
+            capturedPokemonMessage = "You caught a %pokemon% that matches an active hunt! Use /hunts to turn it in.",
         )
     }
-
     private val configManager = ConfigManager(
-        currentVersion = "1.0.2",
+        currentVersion = "1.0.3",
         defaultConfig = createDefaultConfig(),
         configClass = HuntsConfigData::class,
         metadata = ConfigMetadata(
@@ -304,7 +311,7 @@ object HuntsConfig {
             ),
             sectionComments = mapOf(
                 "debugEnabled" to "Enable debug logging for CobbleHunts. Set to true to see detailed logs.",
-                "activeGlobalHuntsAtOnce" to "Number of global hunts active at once (Max: 7).",
+                "activeGlobalHuntsAtOnce" to "Number of global hunts active at once (Max: 28).",
                 "soloEasyCooldown" to "Cooldown timer for Solo Easy hunts in seconds.",
                 "soloNormalCooldown" to "Cooldown timer for Solo Normal hunts in seconds.",
                 "soloMediumCooldown" to "Cooldown timer for Solo Medium hunts in seconds.",
@@ -324,7 +331,11 @@ object HuntsConfig {
                 "enableLeaderboard" to "Enable or disable the leaderboard feature. If false, the leaderboard button will not be shown in the GUI.",
                 "huntingBrushItem" to "Serialized item string for the Hunting Brush.",
                 "onlyAllowTurnInIfCapturedAfterHuntStarted" to "Only allows you to turn in mons captured after starting a hunt",
-                "lockGlobalHuntsOnCompletionForAllPlayers" to "If true, once a global hunt is completed by any player, it is locked for all players until the next round."
+                "lockGlobalHuntsOnCompletionForAllPlayers" to "If true, once a global hunt is completed by any player, it is locked for all players until the next round.",
+                "globalHuntCompletionMessage" to "Message broadcasted when a player completes a global hunt. Available placeholders: %player% (player's name), %pokemon% (Pokémon species), %reward% (reward description)",
+                "capturedPokemonMessage" to "Message sent to a player when they catch a Pokémon matching an active hunt. Use %pokemon% for the Pokémon's name.",
+                "soloHuntCompletionMessage" to "Message sent to a player when they complete a solo hunt. Use %reward% for the reward description.",
+                "autoAcceptSoloHunts" to "If true, solo hunts will automatically activate when available, without needing player interaction."
             )
         )
     )

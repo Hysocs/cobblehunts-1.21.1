@@ -9,9 +9,9 @@ import net.minecraft.server.command.ServerCommandSource
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.text.Text
 import com.cobblehunts.gui.huntseditorgui.HuntsEditorMainGui
-import com.cobblehunts.gui.huntsgui.PlayerHuntsGui
 import com.cobblehunts.utils.HuntsConfig
 import com.cobblehunts.CobbleHunts
+import com.cobblehunts.gui.HuntsGui
 import com.cobblehunts.utils.CatchingTracker
 
 import com.cobblemon.mod.common.Cobblemon
@@ -142,7 +142,7 @@ object HuntsCommands {
             source.sendError(Text.literal("This command can only be used by players."))
             return 0
         }
-        PlayerHuntsGui.openMainGui(player)
+        HuntsGui.openMainGui(player)
         return 1
     }
 
