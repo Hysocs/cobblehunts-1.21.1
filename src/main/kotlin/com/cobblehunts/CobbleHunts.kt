@@ -63,9 +63,6 @@ object CobbleHunts : ModInitializer {
 		startGlobalHunt()
 		globalCooldownEnd = 0
 
-		ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
-			playerData.remove(handler.player.uuid)
-		}
 
 		ServerLifecycleEvents.SERVER_STARTED.register { server ->
 			SchedulerManager.scheduleAtFixedRate("cobblehunts-gui-refresh", server, 0, 1, TimeUnit.SECONDS) {
@@ -143,44 +140,55 @@ object CobbleHunts : ModInitializer {
 	fun selectGlobalPokemon(): HuntPokemonEntry? =
 		weightedRandom(HuntsConfig.config.globalPokemon) { it.chance }
 
-	fun selectRewardForDifficulty(difficulty: String): LootReward? {
+	fun selectRewardForDifficulty(difficulty: String): List<LootReward> {
 		val lootList = when (difficulty) {
 			"easy"   -> HuntsConfig.config.soloEasyLoot
 			"normal" -> HuntsConfig.config.soloNormalLoot
 			"medium" -> HuntsConfig.config.soloMediumLoot
 			"hard"   -> HuntsConfig.config.soloHardLoot
-			else     -> return null
+			else     -> emptyList()
 		}
-		return weightedRandom(lootList) { it.chance }
+		return selectRewards(lootList)
 	}
 
-	fun selectGlobalReward(): LootReward? =
-		weightedRandom(HuntsConfig.config.globalLoot) { it.chance }
+	fun selectGlobalReward(): List<LootReward> {
+		return selectRewards(HuntsConfig.config.globalLoot)
+	}
+
+	private fun selectRewards(lootList: List<LootReward>): List<LootReward> {
+		if (lootList.isEmpty()) return emptyList()
+		return when (HuntsConfig.config.rewardMode) {
+			"percentage" -> lootList.filter { Random.nextDouble() < it.chance }
+			else -> listOfNotNull(weightedRandom(lootList) { it.chance }) // Default to weight mode, single reward
+		}
+	}
 
 	// Creates a hunt instance with inline decisions for gender, nature, and IVs.
 	private fun createHuntInstance(entry: HuntPokemonEntry, difficulty: String): HuntInstance {
-		val props = PokemonProperties.parse("${entry.species}${entry.form?.let { " form=$it" } ?: ""}")
-		val pokemon = props.create()
-		val possibleGenders = pokemon.form.possibleGenders
-		val requiredGender = if (difficulty == "easy") null else entry.gender?.lowercase()?.let { when (it) {
-			"male"    -> "MALE"
-			"female"  -> "FEMALE"
-			"random"  -> if (possibleGenders.isEmpty()) "GENDERLESS"
-			else if (possibleGenders.size == 1) possibleGenders.first().name
-			else if (Random.nextBoolean()) "MALE" else "FEMALE"
-			else      -> null
-		} } ?: if (possibleGenders.isEmpty()) "GENDERLESS"
-		else if (possibleGenders.size == 1) possibleGenders.first().name
-		else if (Random.nextBoolean()) "MALE" else "FEMALE"
-		val requiredNature = if (difficulty in listOf("medium", "hard"))
-			entry.nature?.takeIf { it.lowercase() != "random" }?.lowercase()
-				?: Natures.all().random().name.path.lowercase() else null
-		val requiredIVs = if (difficulty == "hard")
-			listOf("hp", "attack", "defense", "special_attack", "special_defense", "speed")
-				.shuffled().take(entry.ivRange?.toIntOrNull() ?: 2)
-		else emptyList()
-		return HuntInstance(entry, requiredGender, requiredNature, requiredIVs, selectRewardForDifficulty(difficulty))
+		// only enforce gender if entry.gender != null (and not "random") and difficulty > easy
+		val requiredGender = entry.gender
+			?.takeIf { it.lowercase() != "random" && difficulty != "easy" }
+			?.uppercase()
+
+		// only enforce nature if entry.nature != null (and not "random") and difficulty ≥ medium
+		val requiredNature = entry.nature
+			?.takeIf { it.lowercase() != "random" && difficulty in listOf("medium", "hard") }
+			?.lowercase()
+
+		// only enforce IVs if entry.ivRange != null and difficulty == hard
+		val requiredIVs = entry.ivRange
+			?.toIntOrNull()
+			?.takeIf { difficulty == "hard" }
+			?.let { count ->
+				listOf("hp", "attack", "defence", "special_attack", "special_defence", "speed")
+					.shuffled()
+					.take(count)
+			} ?: emptyList()
+
+		val selectedRewards = selectRewardForDifficulty(difficulty)
+		return HuntInstance(entry, requiredGender, requiredNature, requiredIVs, selectedRewards)
 	}
+
 
 	// Only start global hunts if they are enabled via config.
 	private fun startGlobalHunt() {
@@ -199,8 +207,8 @@ object CobbleHunts : ModInitializer {
 				selectGlobalPokemon()
 			pokemon?.also { usedSpecies.add(it.species.lowercase()) }?.let { poke ->
 				LogDebug.debug("Selected Pokémon for global hunt #$i: ${poke.species}", MOD_ID)
-				// Create the hunt instance and set the startTime
-				HuntInstance(poke, null, null, emptyList(), selectGlobalReward(), endTime).apply {
+				val selectedRewards = selectGlobalReward()
+				HuntInstance(poke, null, null, emptyList(), selectedRewards, endTime).apply {
 					startTime = System.currentTimeMillis()
 				}
 			} ?: run {
@@ -336,7 +344,8 @@ data class PlayerHuntData(
 	val previewPokemon: MutableMap<String, HuntInstance> = mutableMapOf(),
 	val activePokemon: MutableMap<String, HuntInstance> = mutableMapOf(),
 	val cooldowns: MutableMap<String, Long> = mutableMapOf(),
-	val completedGlobalHunts: MutableSet<Int> = mutableSetOf()
+	val completedGlobalHunts: MutableSet<Int> = mutableSetOf(),
+	val usedPokemon: MutableSet<UUID> = mutableSetOf()
 )
 
 data class HuntInstance(
@@ -344,7 +353,7 @@ data class HuntInstance(
 	val requiredGender: String?,
 	val requiredNature: String?,
 	val requiredIVs: List<String>,
-	val reward: LootReward?,
+	val rewards: List<LootReward>,
 	var endTime: Long? = null,
 	var startTime: Long? = null
 )

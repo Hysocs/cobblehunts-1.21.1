@@ -18,10 +18,10 @@ import com.cobblemon.mod.common.Cobblemon
 import kotlin.math.max
 
 object HuntsCommands {
-    private val manager = CommandManager("cobblehunts", defaultPermissionLevel = 2, defaultOpLevel = 2)
+    private val manager = CommandManager("cobblehunts", HuntsConfig.config.permissions.permissionLevel, HuntsConfig.config.permissions.opLevel)
 
     fun registerCommands() {
-        manager.command("hunts", permission = "cobblehunts.hunts") {
+        manager.command("hunts", permission = HuntsConfig.config.permissions.huntsPermission) {
             executes { context -> executeMainCommand(context) }
             subcommand("editor", permission = "cobblehunts.editor") {
                 executes { context -> executeEditorCommand(context) }

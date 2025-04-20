@@ -91,6 +91,7 @@ data class CommandReward(
 data class HuntPermissions(
     var permissionLevel: Int = 2,
     var opLevel: Int = 2,
+    var huntsPermission: String = "cobblehunts.hunts",
     var globalHuntPermission: String = "cobblehunts.global",
     var soloEasyHuntPermission: String = "cobblehunts.solo.easy",
     var soloNormalHuntPermission: String = "cobblehunts.solo.normal",
@@ -136,6 +137,8 @@ data class HuntsConfigData(
     var permissions: HuntPermissions = HuntPermissions(),
     var enableLeaderboard: Boolean = true,
     var takeMonOnTurnIn: Boolean = true,
+    var autoTurnInOnCapture: Boolean = false,
+    var rewardMode: String = "weight",
     var onlyAllowTurnInIfCapturedAfterHuntStarted: Boolean = true,
     var lockGlobalHuntsOnCompletionForAllPlayers: Boolean = true,
     var globalPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
@@ -335,7 +338,8 @@ object HuntsConfig {
                 "globalHuntCompletionMessage" to "Message broadcasted when a player completes a global hunt. Available placeholders: %player% (player's name), %pokemon% (Pokémon species), %reward% (reward description)",
                 "capturedPokemonMessage" to "Message sent to a player when they catch a Pokémon matching an active hunt. Use %pokemon% for the Pokémon's name.",
                 "soloHuntCompletionMessage" to "Message sent to a player when they complete a solo hunt. Use %reward% for the reward description.",
-                "autoAcceptSoloHunts" to "If true, solo hunts will automatically activate when available, without needing player interaction."
+                "autoAcceptSoloHunts" to "If true, solo hunts will automatically activate when available, without needing player interaction.",
+                "rewardMode" to "Mode for reward selection: 'weight' (default) or 'percentage'. In 'weight' mode, rewards are selected based on their chance relative to the total. In 'percentage' mode, rewards with chance >= 1.0 are selected uniformly at random among them; otherwise, selection is proportional to their chances.",
             )
         )
     )

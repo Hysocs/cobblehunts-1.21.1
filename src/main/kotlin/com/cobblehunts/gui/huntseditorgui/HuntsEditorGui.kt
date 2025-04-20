@@ -194,27 +194,64 @@ object HuntsPokemonSelectionGui {
     }
 
     private object Textures {
-        const val PREV_PAGE = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNTMzYWQ1YzIyZGIxNjQzNWRhYWQ2MTU5MGFiYTUxZDkzNzkxNDJkZDU1NmQ2YzQyMmE3MTEwY2EzYWJlYTUwIn19fQ=="
-        const val NEXT_PAGE = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOGU0MDNjYzdiYmFjNzM2NzBiZDU0M2Y2YjA5NTViYWU3YjhlOTEyM2Q4M2JkNzYwZjYyMDRjNWFmZDhiZTdlMSJ9fX0="
-        const val SORT_METHOD = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZDExZTk5N2QwZjE4YjZhMjk1YTRiZjBiZDdhYWZjZjE2ZWRhZDgzMjEwN2QyZmYyNzFjNzgxZDU2ZGQ5MWE3MyJ9fX0="
-        const val CANCEL_SEARCH = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzI0MzE5MTFmNDE3OGI0ZDJiNDEzYWE3ZjVjNzhhZTQ0NDdmZTkyNDY5NDNjMzFkZjMxMTYzYzBlMDQzZTBkNiJ9fX0="
+        const val PREV_PAGE =
+            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNTMzYWQ1YzIyZGIxNjQzNWRhYWQ2MTU5MGFiYTUxZDkzNzkxNDJkZDU1NmQ2YzQyMmE3MTEwY2EzYWJlYTUwIn19fQ=="
+        const val NEXT_PAGE =
+            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvOGU0MDNjYzdiYmFjNzM2NzBiZDU0M2Y2YjA5NTViYWU3YjhlOTEyM2Q4M2JkNzYwZjYyMDRjNWFmZDhiZTdlMSJ9fX0="
+        const val SORT_METHOD =
+            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZDExZTk5N2QwZjE4YjZhMjk1YTRiZjBiZDdhYWZjZjE2ZWRhZDgzMjEwN2QyZmYyNzFjNzgxZDU2ZGQ5MWE3MyJ9fX0="
+        const val CANCEL_SEARCH =
+            "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNzI0MzE5MTFmNDE3OGI0ZDJiNDEzYWE3ZjVjNzhhZTQ0NDdmZTkyNDY5NDNjMzFkZjMxMTYzYzBlMDQzZTBkNiJ9fX0="
     }
 
     data class SpeciesFormVariant(val species: Species, val form: FormData, val additionalAspects: Set<String>) {
-        fun toKey(): String = "${species.showdownId()}_${if (form.name.equals("Standard", ignoreCase = true)) "normal" else form.name.lowercase()}_${additionalAspects.map { it.lowercase() }.sorted().joinToString(",")}"
+        fun toKey(): String = "${species.showdownId()}_${
+            if (form.name.equals(
+                    "Standard",
+                    ignoreCase = true
+                )
+            ) "normal" else form.name.lowercase()
+        }_${additionalAspects.map { it.lowercase() }.sorted().joinToString(",")}"
     }
 
     fun openGui(player: ServerPlayerEntity, type: String, tier: String) {
+        // remember what they’re editing
         playerTypes[player] = type
         playerTiers[player] = tier
-        playerPages[player] = 0
-        playerSortMethods[player] = SortMethod.ALPHABETICAL
-        playerSearchTerms[player] = ""
-        val title = if (type == "global") "Select Pokémon for Global Hunts" else "Select Pokémon for ${type.replaceFirstChar { it.titlecase() }} ${tier.replaceFirstChar { it.titlecase() }}"
-        CustomGui.openGui(player, title, generateSelectionLayout(type, tier, 0, SortMethod.ALPHABETICAL, ""), { context -> handleInteraction(context, player) }, { _ -> cleanupPlayerData(player) })
+
+        // only initialize defaults if they haven't been set yet
+        playerPages.putIfAbsent(player, 0)
+        playerSortMethods.putIfAbsent(player, SortMethod.ALPHABETICAL)
+        playerSearchTerms.putIfAbsent(player, "")
+
+        // fetch their last‑used state
+        val page = playerPages[player]!!
+        val sortMethod = playerSortMethods[player]!!
+        val searchTerm = playerSearchTerms[player]!!
+
+        val title = if (type == "global")
+            "Select Pokémon for Global Hunts"
+        else
+            "Select Pokémon for ${type.replaceFirstChar { it.titlecase() }} ${tier.replaceFirstChar { it.titlecase() }}"
+
+        // open WITHOUT cleanup callback so state persists
+        CustomGui.openGui(
+            player,
+            title,
+            generateSelectionLayout(type, tier, page, sortMethod, searchTerm),
+            { ctx -> handleInteraction(ctx, player) },
+            { /* no cleanup here */ }
+        )
     }
 
-    private fun generateSelectionLayout(type: String, tier: String, page: Int, sortMethod: SortMethod, searchTerm: String): List<ItemStack> {
+
+    private fun generateSelectionLayout(
+        type: String,
+        tier: String,
+        page: Int,
+        sortMethod: SortMethod,
+        searchTerm: String
+    ): List<ItemStack> {
         val layout = MutableList(54) { GuiHelpers.createFillerPane() }
         layout[Slots.SORT_METHOD] = createSortMethodButton(sortMethod, searchTerm)
         val monsPerPage = 36
@@ -223,8 +260,12 @@ object HuntsPokemonSelectionGui {
         for (i in variantsList.indices) {
             val slot = i + 9
             val variant = variantsList[i]
-            val entry = selectedPokemon.find { it.species == variant.species.showdownId() && it.form == (if (variant.form.name == "Standard") null else variant.form.name) && it.aspects == variant.additionalAspects }
-            layout[slot] = if (entry != null) createSelectedPokemonItem(tier, variant, entry) else createUnselectedPokemonItem(variant)
+            val entry =
+                selectedPokemon.find { it.species == variant.species.showdownId() && it.form == (if (variant.form.name == "Standard") null else variant.form.name) && it.aspects == variant.additionalAspects }
+            layout[slot] =
+                if (entry != null) createSelectedPokemonItem(tier, variant, entry) else createUnselectedPokemonItem(
+                    variant
+                )
         }
         val totalVariants = getTotalVariantsCount(selectedPokemon, sortMethod, searchTerm)
         if (page > 0) layout[Slots.PREV_PAGE] = GuiHelpers.createPlayerHeadButton(
@@ -250,11 +291,18 @@ object HuntsPokemonSelectionGui {
         val sortMethod = playerSortMethods[player] ?: SortMethod.ALPHABETICAL
         val searchTerm = playerSearchTerms[player] ?: ""
         when (context.slotIndex) {
-            Slots.PREV_PAGE -> if (page > 0) { page--; playerPages[player] = page; CustomGui.refreshGui(player, generateSelectionLayout(type, tier, page, sortMethod, searchTerm)) }
+            Slots.PREV_PAGE -> if (page > 0) {
+                page--; playerPages[player] = page; CustomGui.refreshGui(
+                    player,
+                    generateSelectionLayout(type, tier, page, sortMethod, searchTerm)
+                )
+            }
+
             Slots.BACK -> if (type == "global") HuntsEditorMainGui.openGui(player) else HuntsTierSelectionGui.openGui(
                 player,
                 type
             )
+
             Slots.SORT_METHOD -> when (context.clickType) {
                 ClickType.LEFT -> {
                     val newSortMethod = when (sortMethod) {
@@ -267,36 +315,59 @@ object HuntsPokemonSelectionGui {
                     if (newSortMethod != SortMethod.SEARCH) playerSearchTerms[player] = ""
                     CustomGui.refreshGui(player, generateSelectionLayout(type, tier, page, newSortMethod, ""))
                 }
+
                 ClickType.RIGHT -> {
                     playerPreviousSortMethods[player] = sortMethod
                     openSearchGui(player, type, tier, sortMethod, page)
                 }
             }
+
             Slots.NEXT_PAGE -> {
-                val totalVariants = getTotalVariantsCount(HuntsConfig.getPokemonList(type, tier), sortMethod, searchTerm)
-                if ((page + 1) * 36 < totalVariants) { page++; playerPages[player] = page; CustomGui.refreshGui(player, generateSelectionLayout(type, tier, page, sortMethod, searchTerm)) }
+                val totalVariants =
+                    getTotalVariantsCount(HuntsConfig.getPokemonList(type, tier), sortMethod, searchTerm)
+                if ((page + 1) * 36 < totalVariants) {
+                    page++; playerPages[player] = page; CustomGui.refreshGui(
+                        player,
+                        generateSelectionLayout(type, tier, page, sortMethod, searchTerm)
+                    )
+                }
             }
+
             in 9..44 -> {
                 val selectedPokemon = HuntsConfig.getPokemonList(type, tier)
                 val variantsList = getVariantsForPage(selectedPokemon, page, sortMethod, searchTerm, 36)
                 val index = context.slotIndex - 9
                 if (index < variantsList.size) {
                     val variant = variantsList[index]
-                    val entry = HuntPokemonEntry(species = variant.species.showdownId(), form = if (variant.form.name == "Standard") null else variant.form.name, aspects = variant.additionalAspects, chance = 1.0)
+                    val entry = HuntPokemonEntry(
+                        species = variant.species.showdownId(),
+                        form = if (variant.form.name == "Standard") null else variant.form.name,
+                        aspects = variant.additionalAspects,
+                        chance = 1.0
+                    )
                     if (context.clickType == ClickType.RIGHT) {
-                        val existing = selectedPokemon.find { it.species == entry.species && it.form == entry.form && it.aspects == entry.aspects }
+                        val existing =
+                            selectedPokemon.find { it.species == entry.species && it.form == entry.form && it.aspects == entry.aspects }
                         HuntsPokemonEditGui.openGui(player, type, tier, existing ?: entry)
                     } else if (context.clickType == ClickType.LEFT) {
                         if (selectedPokemon.any { it.species == entry.species && it.form == entry.form && it.aspects == entry.aspects }) {
                             selectedPokemon.removeIf { it.species == entry.species && it.form == entry.form && it.aspects == entry.aspects }
-                            player.sendMessage(Text.literal("Removed ").styled { it.withColor(Formatting.GRAY) }
-                                .append(Text.literal(variant.species.name).styled { it.withColor(Formatting.WHITE) })
-                                .append(Text.literal(" from $type hunts").styled { it.withColor(Formatting.GRAY) }), false)
+                            player.sendMessage(
+                                Text.literal("Removed ").styled { it.withColor(Formatting.GRAY) }
+                                .append(
+                                    Text.literal(variant.species.name).styled { it.withColor(Formatting.WHITE) })
+                                .append(Text.literal(" from $type hunts").styled { it.withColor(Formatting.GRAY) }),
+                                false
+                            )
                         } else {
                             selectedPokemon.add(entry)
-                            player.sendMessage(Text.literal("Added ").styled { it.withColor(Formatting.GRAY) }
-                                .append(Text.literal(variant.species.name).styled { it.withColor(Formatting.WHITE) })
-                                .append(Text.literal(" to $type hunts").styled { it.withColor(Formatting.GRAY) }), false)
+                            player.sendMessage(
+                                Text.literal("Added ").styled { it.withColor(Formatting.GRAY) }
+                                .append(
+                                    Text.literal(variant.species.name).styled { it.withColor(Formatting.WHITE) })
+                                .append(Text.literal(" to $type hunts").styled { it.withColor(Formatting.GRAY) }),
+                                false
+                            )
                         }
                         HuntsConfig.saveConfig()
                         CustomGui.refreshGui(player, generateSelectionLayout(type, tier, page, sortMethod, searchTerm))
@@ -315,7 +386,11 @@ object HuntsPokemonSelectionGui {
         playerTiers.remove(player)
     }
 
-    private fun createSelectedPokemonItem(tier: String, variant: SpeciesFormVariant, entry: HuntPokemonEntry): ItemStack {
+    private fun createSelectedPokemonItem(
+        tier: String,
+        variant: SpeciesFormVariant,
+        entry: HuntPokemonEntry
+    ): ItemStack {
         val aspectsString = variant.additionalAspects.joinToString("") { "aspect=$it" }
         val formString = if (variant.form.name != "Standard") " form=${variant.form.name}" else ""
         val properties = PokemonProperties.parse("${variant.species.showdownId()}$formString $aspectsString")
@@ -323,18 +398,31 @@ object HuntsPokemonSelectionGui {
         val item = PokemonItem.from(pokemon)
         CustomGui.addEnchantmentGlint(item)
         val formDisplay = if (variant.form.name != "Standard") variant.form.name else "Normal"
-        val aspectsDisplay = if (variant.additionalAspects.isNotEmpty()) ", ${variant.additionalAspects.joinToString(", ")}" else ""
+        val aspectsDisplay =
+            if (variant.additionalAspects.isNotEmpty()) ", ${variant.additionalAspects.joinToString(", ")}" else ""
         val displayName = "${variant.species.name} ($formDisplay$aspectsDisplay)"
         item.setCustomName(Text.literal(displayName).styled { it.withColor(Formatting.WHITE) })
         val lore = mutableListOf<Text>()
         lore.add(Text.literal("Chance: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
-            .append(Text.literal("%.1f%%".format(entry.chance * 100)).styled { it.withColor(Formatting.AQUA).withItalic(false) }))
-        if (tier != "easy" && entry.gender != null) lore.add(Text.literal("Gender: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
-            .append(Text.literal(entry.gender!!.replaceFirstChar { it.titlecase() }).styled { it.withColor(Formatting.LIGHT_PURPLE).withItalic(false) }))
-        if (tier in listOf("medium", "hard") && entry.nature != null) lore.add(Text.literal("Nature: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
-            .append(Text.literal(entry.nature!!.replaceFirstChar { it.titlecase() }).styled { it.withColor(Formatting.GREEN).withItalic(false) }))
-        if (tier == "hard" && entry.ivRange != null) lore.add(Text.literal("IVs above 20: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
-            .append(Text.literal(entry.ivRange!!).styled { it.withColor(Formatting.GOLD).withItalic(false) }))
+            .append(
+                Text.literal("%.1f%%".format(entry.chance * 100))
+                    .styled { it.withColor(Formatting.AQUA).withItalic(false) }))
+        if (tier != "easy" && entry.gender != null) lore.add(
+            Text.literal("Gender: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
+                .append(
+                    Text.literal(entry.gender!!.replaceFirstChar { it.titlecase() })
+                        .styled { it.withColor(Formatting.LIGHT_PURPLE).withItalic(false) })
+        )
+        if (tier in listOf("medium", "hard") && entry.nature != null) lore.add(
+            Text.literal("Nature: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
+                .append(
+                    Text.literal(entry.nature!!.replaceFirstChar { it.titlecase() })
+                        .styled { it.withColor(Formatting.GREEN).withItalic(false) })
+        )
+        if (tier == "hard" && entry.ivRange != null) lore.add(
+            Text.literal("IVs above 20: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
+                .append(Text.literal(entry.ivRange!!).styled { it.withColor(Formatting.GOLD).withItalic(false) })
+        )
         lore.add(Text.literal("Left-click to toggle").styled { it.withColor(Formatting.YELLOW).withItalic(false) })
         lore.add(Text.literal("Right-click to edit").styled { it.withColor(Formatting.YELLOW).withItalic(false) })
         CustomGui.setItemLore(item, lore)
@@ -348,38 +436,76 @@ object HuntsPokemonSelectionGui {
         val pokemon = properties.create()
         val item = PokemonItem.from(pokemon, tint = Vector4f(0.3f, 0.3f, 0.3f, 1f))
         val formDisplay = if (variant.form.name != "Standard") variant.form.name else "Normal"
-        val aspectsDisplay = if (variant.additionalAspects.isNotEmpty()) ", ${variant.additionalAspects.joinToString(", ")}" else ""
+        val aspectsDisplay =
+            if (variant.additionalAspects.isNotEmpty()) ", ${variant.additionalAspects.joinToString(", ")}" else ""
         val displayName = "${variant.species.name} ($formDisplay$aspectsDisplay)"
         item.setCustomName(Text.literal(displayName).styled { it.withColor(Formatting.GRAY) })
-        CustomGui.setItemLore(item, listOf(Text.literal("Left-click to toggle").styled { it.withColor(Formatting.YELLOW).withItalic(false) }))
+        CustomGui.setItemLore(
+            item,
+            listOf(Text.literal("Left-click to toggle").styled { it.withColor(Formatting.YELLOW).withItalic(false) })
+        )
         return item
     }
 
-    private fun getAllVariants(selectedPokemon: List<HuntPokemonEntry>, sortMethod: SortMethod, searchTerm: String): List<SpeciesFormVariant> {
+    private fun getAllVariants(
+        selectedPokemon: List<HuntPokemonEntry>,
+        sortMethod: SortMethod,
+        searchTerm: String
+    ): List<SpeciesFormVariant> {
         val speciesList = when (sortMethod) {
             SortMethod.ALPHABETICAL -> PokemonSpecies.species.sortedBy { it.name }
             SortMethod.TYPE -> PokemonSpecies.species.sortedBy { it.primaryType.name }
-            SortMethod.SEARCH -> if (searchTerm.isBlank()) PokemonSpecies.species.sortedBy { it.name } else PokemonSpecies.species.filter { it.name.lowercase().contains(searchTerm.lowercase()) }.sortedBy { it.name }
-            SortMethod.SELECTED -> PokemonSpecies.species.filter { species -> selectedPokemon.any { it.species == species.showdownId() } }.sortedBy { it.name }
+            SortMethod.SEARCH -> if (searchTerm.isBlank()) PokemonSpecies.species.sortedBy { it.name } else PokemonSpecies.species.filter {
+                it.name.lowercase().contains(searchTerm.lowercase())
+            }.sortedBy { it.name }
+
+            SortMethod.SELECTED -> PokemonSpecies.species.filter { species -> selectedPokemon.any { it.species == species.showdownId() } }
+                .sortedBy { it.name }
         }
         return speciesList.flatMap { species ->
             val forms = species.forms.ifEmpty { listOf(species.standardForm) }
             forms.flatMap { form ->
-                val baseVariants = listOf(SpeciesFormVariant(species, form, emptySet()), SpeciesFormVariant(species, form, setOf("shiny")))
+                val baseVariants = listOf(
+                    SpeciesFormVariant(species, form, emptySet()),
+                    SpeciesFormVariant(species, form, setOf("shiny"))
+                )
                 val additionalAspectSets = getAdditionalAspectSets(species)
-                (baseVariants + additionalAspectSets.map { SpeciesFormVariant(species, form, it) }).distinctBy { it.toKey() }
+                (baseVariants + additionalAspectSets.map {
+                    SpeciesFormVariant(
+                        species,
+                        form,
+                        it
+                    )
+                }).distinctBy { it.toKey() }
             }
-        }.let { variants -> if (sortMethod == SortMethod.SELECTED) variants.filter { isVariantSelected(it, selectedPokemon) } else variants }
+        }.let { variants ->
+            if (sortMethod == SortMethod.SELECTED) variants.filter {
+                isVariantSelected(
+                    it,
+                    selectedPokemon
+                )
+            } else variants
+        }
     }
 
-    private fun getVariantsForPage(selectedPokemon: List<HuntPokemonEntry>, page: Int, sortMethod: SortMethod, searchTerm: String, pageSize: Int): List<SpeciesFormVariant> {
+    private fun getVariantsForPage(
+        selectedPokemon: List<HuntPokemonEntry>,
+        page: Int,
+        sortMethod: SortMethod,
+        searchTerm: String,
+        pageSize: Int
+    ): List<SpeciesFormVariant> {
         val allVariants = getAllVariants(selectedPokemon, sortMethod, searchTerm)
         val startIndex = page * pageSize
         val endIndex = min(startIndex + pageSize, allVariants.size)
         return if (startIndex < allVariants.size) allVariants.subList(startIndex, endIndex) else emptyList()
     }
 
-    private fun getTotalVariantsCount(selectedPokemon: List<HuntPokemonEntry>, sortMethod: SortMethod, searchTerm: String): Int = getAllVariants(selectedPokemon, sortMethod, searchTerm).size
+    private fun getTotalVariantsCount(
+        selectedPokemon: List<HuntPokemonEntry>,
+        sortMethod: SortMethod,
+        searchTerm: String
+    ): Int = getAllVariants(selectedPokemon, sortMethod, searchTerm).size
 
     private fun isVariantSelected(variant: SpeciesFormVariant, selectedPokemon: List<HuntPokemonEntry>): Boolean {
         val entryForm = if (variant.form.name == "Standard") null else variant.form.name
@@ -390,7 +516,8 @@ object HuntsPokemonSelectionGui {
         val aspectSets = mutableListOf<Set<String>>()
         val speciesSpecificAspects = mutableSetOf<String>()
         species.forms.forEach { form -> form.aspects.forEach { speciesSpecificAspects.add(it) } }
-        SpeciesFeatures.getFeaturesFor(species).filterIsInstance<ChoiceSpeciesFeatureProvider>().forEach { provider -> provider.getAllAspects().forEach { speciesSpecificAspects.add(it) } }
+        SpeciesFeatures.getFeaturesFor(species).filterIsInstance<ChoiceSpeciesFeatureProvider>()
+            .forEach { provider -> provider.getAllAspects().forEach { speciesSpecificAspects.add(it) } }
         for (aspect in speciesSpecificAspects) {
             aspectSets.add(setOf(aspect));
             aspectSets.add(setOf(aspect, "shiny"))
@@ -399,10 +526,13 @@ object HuntsPokemonSelectionGui {
     }
 
     private fun createSortMethodButton(sortMethod: SortMethod, searchTerm: String): ItemStack {
-        val sortText = if (sortMethod == SortMethod.SEARCH) Text.literal("Search: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
+        val sortText = if (sortMethod == SortMethod.SEARCH) Text.literal("Search: ")
+            .styled { it.withColor(Formatting.GRAY).withItalic(false) }
             .append(Text.literal(searchTerm).styled { it.withColor(Formatting.AQUA).withItalic(false) })
         else Text.literal("Sort: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
-            .append(Text.literal(sortMethod.name.lowercase().replaceFirstChar { it.uppercase() }).styled { it.withColor(Formatting.AQUA).withItalic(false) })
+            .append(
+                Text.literal(sortMethod.name.lowercase().replaceFirstChar { it.uppercase() })
+                    .styled { it.withColor(Formatting.AQUA).withItalic(false) })
         val lore = if (sortMethod == SortMethod.SEARCH) listOf(
             Text.literal("Current Search: ").styled { it.withColor(Formatting.GRAY).withItalic(false) }
                 .append(Text.literal("\"$searchTerm\"").styled { it.withColor(Formatting.AQUA).withItalic(false) }),
@@ -415,7 +545,13 @@ object HuntsPokemonSelectionGui {
         return GuiHelpers.createPlayerHeadButton("SortMethod", sortText, lore, Textures.SORT_METHOD)
     }
 
-    private fun openSearchGui(player: ServerPlayerEntity, type: String, tier: String, previousSortMethod: SortMethod, currentPage: Int) {
+    private fun openSearchGui(
+        player: ServerPlayerEntity,
+        type: String,
+        tier: String,
+        previousSortMethod: SortMethod,
+        currentPage: Int
+    ) {
         val cancelButton = GuiHelpers.createPlayerHeadButton(
             "Cancel",
             Text.literal("Cancel").styled { it.withColor(Formatting.RED) },
@@ -424,6 +560,7 @@ object HuntsPokemonSelectionGui {
         )
         val blockedInput = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE)
         val placeholderOutput = ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE)
+
         AnvilGuiManager.openAnvilGui(
             player = player,
             id = "hunts_search_${type}_$tier",
@@ -432,58 +569,66 @@ object HuntsPokemonSelectionGui {
             leftItem = cancelButton,
             rightItem = blockedInput,
             resultItem = placeholderOutput,
+
             onLeftClick = { _ ->
-                player.sendMessage(Text.literal("Search cancelled.").styled { it.withColor(Formatting.GRAY) }, false)
                 player.closeHandledScreen()
-                player.server.execute {
-                    playerSortMethods[player] = previousSortMethod
-                    playerSearchTerms[player] = ""
-                    playerPages[player] = currentPage
-                    playerTypes[player] = type
-                    playerTiers[player] = tier
-                    val title = if (type == "global") "Select Pokémon for Global Hunts" else "Select Pokémon for ${type.replaceFirstChar { it.titlecase() }} ${tier.replaceFirstChar { it.titlecase() }}"
-                    CustomGui.openGui(player, title, generateSelectionLayout(type, tier, currentPage, previousSortMethod, ""), { context -> handleInteraction(context, player) }, { _ -> cleanupPlayerData(player) })
+                // restore old sort/page, clear search
+                playerSortMethods[player] = previousSortMethod
+                playerPages[player] = currentPage
+                playerSearchTerms[player] = ""
+                // re‑use our openGui so state persists
+                openGui(player, type, tier)
+            },
+
+            onResultClick = { ctx ->
+                val txt = ctx.handler.currentText.trim()
+                if (txt.isNotBlank()) {
+                    player.closeHandledScreen()
+                    // apply new SEARCH sort
+                    playerSortMethods[player] = SortMethod.SEARCH
+                    playerSearchTerms[player] = txt
+                    playerPages[player] = 0
+                    openGui(player, type, tier)
+                } else {
+                    player.sendMessage(
+                        Text.literal("Please enter a search term.").styled { it.withColor(Formatting.RED) },
+                        false
+                    )
                 }
             },
-            onRightClick = null,
-            onResultClick = { context ->
-                if (context.handler.currentText.isNotBlank()) {
-                    val searchTerm = context.handler.currentText.trim()
-                    player.sendMessage(Text.literal("Searching for: ").styled { it.withColor(Formatting.GREEN) }.append(Text.literal("'$searchTerm'").styled { it.withColor(Formatting.AQUA) }), false)
-                    player.closeHandledScreen()
-                    player.server.execute {
-                        playerSortMethods[player] = SortMethod.SEARCH
-                        playerSearchTerms[player] = searchTerm
-                        playerPages[player] = 0
-                        playerTypes[player] = type
-                        playerTiers[player] = tier
-                        val title = if (type == "global") "Select Pokémon for Global Hunts" else "Select Pokémon for ${type.replaceFirstChar { it.titlecase() }} ${tier.replaceFirstChar { it.titlecase() }}"
-                        CustomGui.openGui(player, title, generateSelectionLayout(type, tier, 0, SortMethod.SEARCH, searchTerm), { ctx -> handleInteraction(ctx, player) }, { _ -> cleanupPlayerData(player) })
-                    }
-                } else player.sendMessage(Text.literal("Please enter a search term.").styled { it.withColor(Formatting.RED) }, false)
-            },
+
             onTextChange = { text ->
                 val handler = player.currentScreenHandler as? FullyModularAnvilScreenHandler
-                if (text.isNotEmpty()) handler?.updateSlot(
-                    2,
-                    GuiHelpers.createPlayerHeadButton(
-                        "Search",
-                        Text.literal("Search: ").styled { it.withColor(Formatting.GREEN) }
-                            .append(Text.literal(text).styled { it.withColor(Formatting.AQUA) }),
-                        listOf(
-                            Text.literal("Click to search").styled { it.withColor(Formatting.GRAY).withItalic(false) }),
-                        Textures.SORT_METHOD
+                if (text.isNotEmpty()) {
+                    handler?.updateSlot(
+                        2,
+                        GuiHelpers.createPlayerHeadButton(
+                            "Search",
+                            Text.literal("Search: ").styled { it.withColor(Formatting.GREEN) }
+                                .append(Text.literal(text).styled { it.withColor(Formatting.AQUA) }),
+                            listOf(
+                                Text.literal("Click to search")
+                                    .styled { it.withColor(Formatting.GRAY).withItalic(false) }),
+                            Textures.SORT_METHOD
+                        )
                     )
-                )
-                else handler?.updateSlot(2, placeholderOutput)
+                } else {
+                    handler?.updateSlot(2, placeholderOutput)
+                }
             },
-            onClose = { if (player.currentScreenHandler !is FullyModularAnvilScreenHandler) cleanupPlayerData(player) }
+
+            onClose = { /* do NOT cleanup here — leave maps intact */ }
         )
-        player.server.execute { (player.currentScreenHandler as? FullyModularAnvilScreenHandler)?.clearTextField() }
-        player.sendMessage(Text.literal("Enter a Pokémon name to search...").styled { it.withColor(Formatting.GRAY) }, false)
+
+        player.server.execute {
+            (player.currentScreenHandler as? FullyModularAnvilScreenHandler)?.clearTextField()
+        }
+        player.sendMessage(
+            Text.literal("Enter a Pokémon name to search...").styled { it.withColor(Formatting.GRAY) },
+            false
+        )
     }
 }
-
 object HuntsPokemonEditGui {
     private object Slots {
         const val POKEMON_DISPLAY = 4

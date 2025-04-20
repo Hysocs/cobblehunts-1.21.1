@@ -64,19 +64,28 @@ object TurnInGui {
         val party = CobbleHunts.getPlayerParty(player)
         val activeHunt = getActiveHunt(player, rarity, huntIndex) ?: return layout
 
+        // show party
         PARTY_SLOTS.forEachIndexed { index, slot ->
             layout[slot] = createPartySlotItem(party.getOrNull(index), selectedForTurnIn[index])
         }
 
+        // turn‑in buttons now receive 'player' so they can disable used mons
         TURN_IN_BUTTON_SLOTS.forEachIndexed { index, slot ->
-            layout[slot] = createTurnInButton(party.getOrNull(index), selectedForTurnIn[index], activeHunt)
+            layout[slot] = createTurnInButton(
+                player,
+                party.getOrNull(index),
+                selectedForTurnIn[index],
+                activeHunt
+            )
         }
 
+        // selected Pokémon preview
         TURN_IN_SLOTS.forEachIndexed { index, slot ->
             layout[slot] = selectedForTurnIn[index]?.let { createPokemonItem(it) }
                 ?: ItemStack(Items.RED_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
         }
 
+        // cancel buttons
         CANCEL_BUTTON_SLOTS.forEachIndexed { index, slot ->
             layout[slot] = if (selectedForTurnIn[index] != null) {
                 CustomGui.createPlayerHeadButton(
@@ -90,10 +99,12 @@ object TurnInGui {
             }
         }
 
+        // confirm button (only when exactly one is selected)
         if (selectedForTurnIn.count { it != null } == 1) {
             layout[CONFIRM_BUTTON_SLOT] = createConfirmButton()
         }
 
+        // back button
         layout[BACK_BUTTON_SLOT] = CustomGui.createPlayerHeadButton(
             textureName = "Back",
             title = Text.literal("Back").styled { it.withColor(Formatting.YELLOW) },
@@ -103,6 +114,7 @@ object TurnInGui {
 
         return layout
     }
+
 
     private fun handleTurnInInteraction(
         context: InteractionContext,
@@ -137,28 +149,57 @@ object TurnInGui {
         }
     }
 
-    private fun createTurnInButton(pokemon: Pokemon?, selected: Pokemon?, activeHunt: HuntInstance): ItemStack {
+    private fun createTurnInButton(
+        player: ServerPlayerEntity,
+        pokemon: Pokemon?,
+        selected: Pokemon?,
+        activeHunt: HuntInstance
+    ): ItemStack {
+        // 1) already used → Not Eligible
+        if (pokemon != null) {
+            val used = CobbleHunts.getPlayerData(player).usedPokemon.contains(pokemon.uuid)
+            if (used) {
+                return CustomGui.createPlayerHeadButton(
+                    textureName = "NotTarget",
+                    title = Text.literal("Not Eligible").styled { it.withColor(Formatting.RED) },
+                    lore = listOf(
+                        Text.literal("This Pokémon has already been turned in")
+                            .styled { it.withColor(Formatting.GRAY) }
+                    ),
+                    textureValue = Textures.NOT_TARGET
+                )
+            }
+        }
+
+        // 2) fallback to your existing logic:
         if (pokemon == null || selected != null) {
-            return ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
+            return ItemStack(Items.LIGHT_GRAY_STAINED_GLASS_PANE)
+                .apply { setCustomName(Text.literal("")) }
         }
 
         if (!pokemon.species.name.equals(activeHunt.entry.species, ignoreCase = true)) {
             return CustomGui.createPlayerHeadButton(
                 textureName = "NotTarget",
                 title = Text.literal("Incorrect Species").styled { it.withColor(Formatting.RED) },
-                lore = listOf(Text.literal("This is not the required Pokémon species").styled { it.withColor(Formatting.GRAY) }),
+                lore = listOf(
+                    Text.literal("This is not the required Pokémon species")
+                        .styled { it.withColor(Formatting.GRAY) }
+                ),
                 textureValue = Textures.NOT_TARGET
             )
         }
 
         if (HuntsConfig.config.onlyAllowTurnInIfCapturedAfterHuntStarted) {
             val captureTime = CatchingTracker.getCaptureTime(pokemon.uuid)
-            val huntStartTime = activeHunt.startTime ?: 0L
-            if (captureTime == null || captureTime < huntStartTime) {
+            val huntStart = activeHunt.startTime ?: 0L
+            if (captureTime == null || captureTime < huntStart) {
                 return CustomGui.createPlayerHeadButton(
                     textureName = "NotTarget",
                     title = Text.literal("Not Eligible").styled { it.withColor(Formatting.RED) },
-                    lore = listOf(Text.literal("Captured before hunt started").styled { it.withColor(Formatting.RED) }),
+                    lore = listOf(
+                        Text.literal("Captured before hunt started")
+                            .styled { it.withColor(Formatting.RED) }
+                    ),
                     textureValue = Textures.NOT_TARGET
                 )
             }
@@ -169,18 +210,24 @@ object TurnInGui {
             CustomGui.createPlayerHeadButton(
                 textureName = "TurnIn",
                 title = Text.literal("Turn In").styled { it.withColor(Formatting.YELLOW) },
-                lore = listOf(Text.literal("Click to select for turn-in").styled { it.withColor(Formatting.GRAY) }),
+                lore = listOf(
+                    Text.literal("Click to select for turn‑in")
+                        .styled { it.withColor(Formatting.GRAY) }
+                ),
                 textureValue = Textures.TURN_IN
             )
         } else {
             CustomGui.createPlayerHeadButton(
                 textureName = "NotTarget",
                 title = Text.literal("Missing Requirements").styled { it.withColor(Formatting.RED) },
-                lore = mismatches.map { Text.literal(it).styled { it.withColor(Formatting.GRAY) } },
+                lore = mismatches.map {
+                    Text.literal(it).styled { it.withColor(Formatting.GRAY) }
+                },
                 textureValue = Textures.NOT_TARGET
             )
         }
     }
+
 
     private fun createConfirmButton(): ItemStack {
         val lore = if (HuntsConfig.config.takeMonOnTurnIn) {
@@ -244,53 +291,77 @@ object TurnInGui {
         player: ServerPlayerEntity,
         selectedForTurnIn: MutableList<Pokemon?>,
         rarity: String,
-        huntIndex: Int?
+        huntIndex: Int?,
+        openGui: Boolean = true
     ) {
+        val data = CobbleHunts.getPlayerData(player)
+
+        // 1) pull the one you clicked on
         val selectedPokemon = selectedForTurnIn.firstOrNull { it != null } ?: return
-        val party = Cobblemon.storage.getParty(player)
-        if (!party.contains(selectedPokemon)) {
-            return // Security check
+
+        // 2) never allow double‑turn‑in of the same mon
+        if (data.usedPokemon.contains(selectedPokemon.uuid)) {
+            // optionally: player.sendMessage(Text.literal("That Pokémon has already been turned in!"), false)
+            return
         }
 
+        // 3) normal security check
+        val party = Cobblemon.storage.getParty(player)
+        if (!party.contains(selectedPokemon)) return
+
+        // 4) time check
         val activeHunt = getActiveHunt(player, rarity, huntIndex) ?: return
         if (activeHunt.endTime != null && System.currentTimeMillis() >= activeHunt.endTime!!) {
             player.closeHandledScreen()
             return
         }
 
+        // 5) "only after hunt started" check
         if (HuntsConfig.config.onlyAllowTurnInIfCapturedAfterHuntStarted) {
             val captureTime = CatchingTracker.getCaptureTime(selectedPokemon.uuid)
-            val huntStartTime = activeHunt.startTime ?: 0L
-            if (captureTime == null || captureTime < huntStartTime) {
-                return
-            }
+            val huntStart = activeHunt.startTime ?: 0L
+            if (captureTime == null || captureTime < huntStart) return
         }
 
+        // 6) record usage first, so even if removal is disabled, it can’t be re‑used
+        data.usedPokemon.add(selectedPokemon.uuid)
+
+        // 7) if configured, physically remove
         if (HuntsConfig.config.takeMonOnTurnIn) {
-            CobbleHunts.removedPokemonCache.getOrPut(player.uuid) { mutableListOf() }.add(selectedPokemon)
+            CobbleHunts.removedPokemonCache
+                .getOrPut(player.uuid) { mutableListOf() }
+                .add(selectedPokemon)
             party.remove(selectedPokemon)
         }
 
-        processRewardsAndLeaderboard(player, rarity, selectedPokemon, activeHunt.reward)
+        // 8) hand out rewards & points, mark hunt complete
+        processRewardsAndLeaderboard(player, rarity, selectedPokemon, activeHunt.rewards)
         markHuntComplete(player, rarity, huntIndex)
 
+        // 9) global broadcast + optional GUI reopen
         if (rarity == "global") {
             val ops = RegistryOps.of(JsonOps.INSTANCE, player.server.registryManager)
-            val rewardString = getRewardString(activeHunt.reward, ops)
-            val speciesName = activeHunt.entry.species.lowercase().replaceFirstChar { it.titlecase() }
-            val message = HuntsConfig.config.globalHuntCompletionMessage
+            val rewardStrings = activeHunt.rewards.map { getRewardString(it, ops) }
+            val rewardMessage = rewardStrings.joinToString(", ")
+            val speciesName = activeHunt.entry.species
+                .lowercase()
+                .replaceFirstChar { it.titlecase() }
+            val msg = HuntsConfig.config.globalHuntCompletionMessage
                 .replace("%player%", player.name.string)
                 .replace("%pokemon%", speciesName)
-                .replace("%reward%", rewardString)
-            CobbleHunts.broadcast(player.server, message)
+                .replace("%reward%", rewardMessage)
+            CobbleHunts.broadcast(player.server, msg)
+
             player.closeHandledScreen()
-            HuntsGlobalGui.openGlobalHuntsGui(player)
+            if (openGui) {
+                HuntsGlobalGui.openGlobalHuntsGui(player)
+            }
         } else {
             player.closeHandledScreen()
         }
     }
 
-    private fun getRewardString(reward: LootReward?, ops: RegistryOps<JsonElement>): String {
+    private fun getRewardString(reward: LootReward, ops: RegistryOps<JsonElement>): String {
         return when (reward) {
             is ItemReward -> {
                 val itemStack = reward.serializableItemStack.toItemStack(ops)
@@ -303,7 +374,6 @@ object TurnInGui {
                     itemStack.get(DataComponentTypes.CUSTOM_NAME)?.string?.replace("§[0-9a-fk-or]".toRegex(), "") ?: itemStack.item.name.string
                 } ?: "a special reward"
             }
-            else -> "no reward"
         }
     }
 
@@ -311,7 +381,7 @@ object TurnInGui {
         player: ServerPlayerEntity,
         rarity: String,
         pokemon: Pokemon,
-        reward: LootReward?
+        rewards: List<LootReward> // Changed from `reward: LootReward?`
     ) {
         val points = when (rarity) {
             "easy" -> HuntsConfig.config.soloEasyPoints
@@ -325,31 +395,33 @@ object TurnInGui {
             LeaderboardManager.addPoints(player.name.string, points)
         }
 
-        if (reward != null) {
+        if (rewards.isNotEmpty()) {
             val ops = RegistryOps.of(JsonOps.INSTANCE, player.server.registryManager)
-            val rewardString = getRewardString(reward, ops)
-            when (reward) {
-                is ItemReward -> {
-                    val itemStack = reward.serializableItemStack.toItemStack(ops)
-                    player.inventory.offerOrDrop(itemStack)
-                }
-                is CommandReward -> {
-                    val command = reward.command.replace("%player%", player.name.string)
-                    try {
-                        player.server.commandManager.executeWithPrefix(player.server.commandSource, command)
-                    } catch (e: Exception) {
-                        // Log error if needed
+            val rewardStrings = rewards.map { getRewardString(it, ops) }
+            val rewardMessage = rewardStrings.joinToString(", ")
+            rewards.forEach { reward ->
+                when (reward) {
+                    is ItemReward -> {
+                        val itemStack = reward.serializableItemStack.toItemStack(ops)
+                        player.inventory.offerOrDrop(itemStack)
+                    }
+                    is CommandReward -> {
+                        val command = reward.command.replace("%player%", player.name.string)
+                        try {
+                            player.server.commandManager.executeWithPrefix(player.server.commandSource, command)
+                        } catch (e: Exception) {
+                            // Log error if needed
+                        }
                     }
                 }
             }
             if (rarity != "global") {
                 val message = HuntsConfig.config.soloHuntCompletionMessage
-                    .replace("%reward%", rewardString)
+                    .replace("%reward%", rewardMessage)
                 CobbleHunts.broadcast(player.server, message, player)
             }
         }
     }
-
     private fun markHuntComplete(player: ServerPlayerEntity, rarity: String, huntIndex: Int?) {
         val data = CobbleHunts.getPlayerData(player)
         if (rarity == "global" && huntIndex != null) {
@@ -389,58 +461,106 @@ object TurnInGui {
         }
     }
 
-    private fun getAttributeMismatchReasons(pokemon: Pokemon, activeHunt: HuntInstance): List<String> {
+    private fun getAttributeMismatchReasons(pokemon: Pokemon, hunt: HuntInstance): List<String> {
         val reasons = mutableListOf<String>()
-        val entry = activeHunt.entry
+        val e = hunt.entry
 
-        if (!pokemon.species.name.equals(entry.species, ignoreCase = true)) {
-            reasons.add("Incorrect species")
+        if (!pokemon.species.name.equals(e.species, ignoreCase = true)) {
+            reasons += "Incorrect species"
         }
-        if (entry.form != null && !pokemon.form.name.equals(entry.form, ignoreCase = true)) {
-            reasons.add("Incorrect form")
+        if (e.form != null && !pokemon.form.name.equals(e.form, ignoreCase = true)) {
+            reasons += "Incorrect form"
         }
-        if (!pokemon.aspects.containsAll(entry.aspects)) {
-            reasons.add("Missing required aspects")
+        if (!pokemon.aspects.containsAll(e.aspects)) {
+            reasons += "Missing required aspects"
         }
-        if (activeHunt.requiredGender != null && !pokemon.gender.name.equals(activeHunt.requiredGender, ignoreCase = true)) {
-            reasons.add("Incorrect gender")
+        hunt.requiredGender?.let { req ->
+            if (!pokemon.gender.name.equals(req, ignoreCase = true)) {
+                reasons += "Incorrect gender"
+            }
         }
-        if (activeHunt.requiredNature != null && !pokemon.nature.name.path.equals(activeHunt.requiredNature, ignoreCase = true)) {
-            reasons.add("Incorrect nature")
+        hunt.requiredNature?.let { req ->
+            if (!pokemon.nature.name.path.equals(req, ignoreCase = true)) {
+                reasons += "Incorrect nature"
+            }
         }
-        if (activeHunt.requiredIVs.isNotEmpty()) {
-            val lowIVs = activeHunt.requiredIVs.filter { iv ->
-                val stat = when (iv.lowercase()) {
+        if (hunt.requiredIVs.isNotEmpty()) {
+            val low = hunt.requiredIVs.filter { iv ->
+                val stat = when (iv) {
                     "hp" -> Stats.HP
                     "attack" -> Stats.ATTACK
-                    "defense" -> Stats.DEFENCE
+                    "defence" -> Stats.DEFENCE
                     "special_attack" -> Stats.SPECIAL_ATTACK
-                    "special_defense" -> Stats.SPECIAL_DEFENCE
+                    "special_defence" -> Stats.SPECIAL_DEFENCE
                     "speed" -> Stats.SPEED
                     else -> null
                 }
                 stat != null && (pokemon.ivs[stat] ?: 0) < 20
             }
-            if (lowIVs.isNotEmpty()) {
-                reasons.add("Low IVs in: ${lowIVs.joinToString(", ")}")
+            if (low.isNotEmpty()) {
+                reasons += "Low IVs in: ${low.joinToString(", ")}"
             }
         }
+
         return reasons
     }
 
-    private fun selectRewardFromLootPool(lootPool: List<LootReward>): LootReward? {
-        if (lootPool.isEmpty()) return null
-        val totalChance = lootPool.sumOf { it.chance }
-        val randomValue = Random.nextDouble() * totalChance
-        var cumulativeChance = 0.0
-        for (reward in lootPool) {
-            cumulativeChance += reward.chance
-            if (randomValue <= cumulativeChance) {
-                return reward
+
+    /**
+     * When auto‑turn‑in is enabled, on capture we find any matching solo or global hunt,
+     * select that Pokémon in the same slot it occupied in the party GUI, and then call
+     * handleConfirmTurnIn(...) to reuse all of your existing “confirm” logic.
+     */
+    /**
+     * When auto‑turn‑in is enabled and on capture, this will:
+     *  • only run solo hunts if soloHuntsEnabled == true
+     *  • only run global hunts if globalHuntsEnabled == true
+     *  • find any matching hunt, select that Pokémon slot, and invoke handleConfirmTurnIn(...)
+     */
+    fun autoTurnInOnCapture(player: ServerPlayerEntity, pokemon: Pokemon) {
+        // bail early if the feature’s off entirely
+        if (!HuntsConfig.config.autoTurnInOnCapture) return
+
+        val party = CobbleHunts.getPlayerParty(player)
+        val slot = party.indexOf(pokemon).takeIf { it >= 0 } ?: return
+
+        // 1) SOLO HUNTS
+        if (HuntsConfig.config.soloHuntsEnabled) {
+            for (difficulty in listOf("easy", "normal", "medium", "hard")) {
+                // also skip if that tier specifically disabled
+                val tierEnabled = when (difficulty) {
+                    "easy" -> HuntsConfig.config.soloEasyEnabled
+                    "normal" -> HuntsConfig.config.soloNormalEnabled
+                    "medium" -> HuntsConfig.config.soloMediumEnabled
+                    "hard" -> HuntsConfig.config.soloHardEnabled
+                    else -> false
+                }
+                if (!tierEnabled) continue
+
+                val hunt = CobbleHunts.getPlayerData(player).activePokemon[difficulty] ?: continue
+                if (!hunt.entry.species.equals(pokemon.species.name, ignoreCase = true)) continue
+
+                val selected = MutableList<Pokemon?>(6) { null }
+                selected[slot] = pokemon
+                handleConfirmTurnIn(player, selected, difficulty, null, openGui = false)
+                return
             }
         }
-        return lootPool.last()
+
+        // 2) GLOBAL HUNTS
+        if (HuntsConfig.config.globalHuntsEnabled) {
+            CobbleHunts.globalHuntStates.withIndex().forEach { (index, hunt) ->
+                if (!hunt.entry.species.equals(pokemon.species.name, ignoreCase = true)) return@forEach
+
+                val selected = MutableList<Pokemon?>(6) { null }
+                selected[slot] = pokemon
+                handleConfirmTurnIn(player, selected, "global", index, openGui = false)
+                return
+            }
+        }
     }
+
+
 
     private fun createPokemonItem(pokemon: Pokemon): ItemStack {
         val item = PokemonItem.from(pokemon)
