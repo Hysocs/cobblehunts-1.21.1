@@ -189,6 +189,24 @@ object CobbleHunts : ModInitializer {
 		return HuntInstance(entry, requiredGender, requiredNature, requiredIVs, selectedRewards)
 	}
 
+	private fun createGlobalHuntInstance(entry: HuntPokemonEntry): HuntInstance {
+		val requiredGender = entry.gender
+			?.takeIf { it.lowercase() != "random" }
+			?.uppercase()
+		val requiredNature = entry.nature
+			?.takeIf { it.lowercase() != "random" }
+			?.lowercase()
+		val requiredIVs = entry.ivRange
+			?.toIntOrNull()
+			?.takeIf { it > 0 }
+			?.let { count ->
+				listOf("hp", "attack", "defence", "special_attack", "special_defence", "speed")
+					.shuffled()
+					.take(count)
+			} ?: emptyList()
+		val selectedRewards = selectGlobalReward()
+		return HuntInstance(entry, requiredGender, requiredNature, requiredIVs, selectedRewards)
+	}
 
 	// Only start global hunts if they are enabled via config.
 	private fun startGlobalHunt() {
@@ -207,10 +225,10 @@ object CobbleHunts : ModInitializer {
 				selectGlobalPokemon()
 			pokemon?.also { usedSpecies.add(it.species.lowercase()) }?.let { poke ->
 				LogDebug.debug("Selected Pokémon for global hunt #$i: ${poke.species}", MOD_ID)
-				val selectedRewards = selectGlobalReward()
-				HuntInstance(poke, null, null, emptyList(), selectedRewards, endTime).apply {
-					startTime = System.currentTimeMillis()
-				}
+				val instance = createGlobalHuntInstance(poke)
+				instance.startTime = System.currentTimeMillis()
+				instance.endTime = endTime
+				instance
 			} ?: run {
 				LogDebug.debug("No Pokémon available for global hunt #$i", MOD_ID)
 				null
