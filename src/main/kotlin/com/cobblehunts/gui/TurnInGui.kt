@@ -177,7 +177,7 @@ object TurnInGui {
                 .apply { setCustomName(Text.literal("")) }
         }
 
-        if (!pokemon.species.name.equals(activeHunt.entry.species, ignoreCase = true)) {
+        if (!pokemon.species.showdownId().equals(activeHunt.entry.species, ignoreCase = true)) {
             return CustomGui.createPlayerHeadButton(
                 textureName = "NotTarget",
                 title = Text.literal("Incorrect Species").styled { it.withColor(Formatting.RED) },
@@ -255,7 +255,7 @@ object TurnInGui {
         val pokemon = party.getOrNull(index) ?: return
         val activeHunt = getActiveHunt(player, rarity, huntIndex) ?: return
 
-        if (selectedForTurnIn[index] != null || !pokemon.species.name.equals(activeHunt.entry.species, ignoreCase = true)) {
+        if (selectedForTurnIn[index] != null || !pokemon.species.showdownId().equals(activeHunt.entry.species, ignoreCase = true)) {
             return
         }
 
@@ -465,7 +465,7 @@ object TurnInGui {
         val reasons = mutableListOf<String>()
         val e = hunt.entry
 
-        if (!pokemon.species.name.equals(e.species, ignoreCase = true)) {
+        if (!pokemon.species.showdownId().equals(e.species, ignoreCase = true)) {
             reasons += "Incorrect species"
         }
         if (e.form != null && !pokemon.form.name.equals(e.form, ignoreCase = true)) {
@@ -538,7 +538,7 @@ object TurnInGui {
                 if (!tierEnabled) continue
 
                 val hunt = CobbleHunts.getPlayerData(player).activePokemon[difficulty] ?: continue
-                if (!hunt.entry.species.equals(pokemon.species.name, ignoreCase = true)) continue
+                if (!hunt.entry.species.equals(pokemon.species.showdownId(), ignoreCase = true)) continue
 
                 val selected = MutableList<Pokemon?>(6) { null }
                 selected[slot] = pokemon
@@ -550,7 +550,7 @@ object TurnInGui {
         // 2) GLOBAL HUNTS
         if (HuntsConfig.config.globalHuntsEnabled) {
             CobbleHunts.globalHuntStates.withIndex().forEach { (index, hunt) ->
-                if (!hunt.entry.species.equals(pokemon.species.name, ignoreCase = true)) return@forEach
+                if (!hunt.entry.species.equals(pokemon.species.showdownId(), ignoreCase = true)) return@forEach
 
                 val selected = MutableList<Pokemon?>(6) { null }
                 selected[slot] = pokemon
