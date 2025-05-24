@@ -1,5 +1,6 @@
-package com.cobblehunts
+package com.cobblehunts.utils
 
+import com.cobblehunts.CobbleHunts
 import com.everlastingutils.command.CommandManager
 import com.mojang.brigadier.arguments.IntegerArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
@@ -8,11 +9,8 @@ import com.mojang.brigadier.context.CommandContext
 import net.minecraft.server.command.ServerCommandSource
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.text.Text
-import com.cobblehunts.utils.HuntsConfig
 import com.cobblehunts.gui.HuntsGui
 import com.cobblehunts.gui.huntseditorgui.HuntsEditorMainGui
-import com.cobblehunts.utils.CatchingTracker
-import com.cobblehunts.utils.RerollService
 
 import com.cobblemon.mod.common.Cobblemon
 import net.fabricmc.loader.api.FabricLoader
