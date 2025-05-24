@@ -62,8 +62,6 @@ object HuntsSoloGui {
 
         val economyEnabled = config.economyEnabled
         val rerollSlots = slots.map { it + 9 }
-        // (Special case: only 3 hunt difficulties active)
-        // If reroll slot collides with back slot, move back button to the end
         val backSlot = if (SoloSlots.BACK in rerollSlots) 26 else SoloSlots.BACK
 
         for ((index, difficulty) in enabledDifficulties.withIndex()) {
@@ -144,8 +142,6 @@ object HuntsSoloGui {
         val perms = HuntsConfig.config.permissions
         val source = player.server.commandSource.withEntity(player).withPosition(player.pos)
         val rerollSlots = slots.map { it + 9 }
-        // (Special case: only 3 hunt difficulties active)
-        // If reroll slot collides with back slot, move back button to the end
         val backSlot = if (SoloSlots.BACK in rerollSlots) 26 else SoloSlots.BACK
 
         for ((index, difficulty) in enabledDifficulties.withIndex()) {
