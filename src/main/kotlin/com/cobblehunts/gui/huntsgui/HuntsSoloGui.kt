@@ -156,7 +156,7 @@ object HuntsSoloGui {
                     return
                 }
 
-                if (RerollService.tryRerollPreview(player, difficulty)) {
+                if (RerollService.tryRerollPreview(player, "solo$difficulty")) {
                     val newLayout = generateSoloLayout(player).toMutableList()
                     HuntsGui.dynamicGuiData[player] = Pair("solo", newLayout)
                     CustomGui.refreshGui(player, newLayout)

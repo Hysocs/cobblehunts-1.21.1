@@ -106,7 +106,7 @@ data class HuntPermissions(
  * The non-pool settings are at the top, while all the spawn/loot pools are at the bottom.
  */
 data class HuntsConfigData(
-    override val version: String = "1.0.6",
+    override val version: String = "1.0.7",
     override val configId: String = "cobblehunts",
     var debugEnabled: Boolean = false,
     var activeGlobalHuntsAtOnce: Int = 4,
@@ -321,7 +321,7 @@ object HuntsConfig {
         )
     }
     private val configManager = ConfigManager(
-        currentVersion = "1.0.6",
+        currentVersion = "1.0.7",
         defaultConfig = createDefaultConfig(),
         configClass = HuntsConfigData::class,
         metadata = ConfigMetadata(
