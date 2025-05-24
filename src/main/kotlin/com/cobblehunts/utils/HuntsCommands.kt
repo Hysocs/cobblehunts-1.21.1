@@ -363,7 +363,7 @@ object HuntsCommands {
             return 0
         }
 
-        val success = RerollService.tryRerollPreview(target, huntType)
+        val success = RerollService.tryRerollPreview(target, huntType, true)
         if (source.player !is ServerPlayerEntity || source.player != target) {
             if (success) {
                 source.sendMessage(

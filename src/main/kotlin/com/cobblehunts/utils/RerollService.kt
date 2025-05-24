@@ -9,15 +9,18 @@ import net.minecraft.util.Formatting
 import java.math.BigDecimal
 
 object RerollService {
-    fun tryRerollPreview(player: ServerPlayerEntity, huntType: String): Boolean {
+    fun tryRerollPreview(player: ServerPlayerEntity, huntType: String, skipChecks: Boolean = false): Boolean {
         val config = HuntsConfig.config
         val perms = config.permissions
         val source = player.server.commandSource.withEntity(player).withPosition(player.pos)
 
-        if (!CommandManager.hasPermissionOrOp(source, perms.rerollPermission, perms.permissionLevel, perms.opLevel)) {
-            player.sendMessage(Text.literal("You do not have permission to reroll hunts")
-                .styled { it.withColor(Formatting.RED) }, false)
-            return false
+        if (!skipChecks) {
+            if (!CommandManager.hasPermissionOrOp(source, perms.rerollPermission, perms.permissionLevel, perms.opLevel)) {
+                player.sendMessage(
+                    Text.literal("You do not have permission to reroll hunts")
+                        .styled { it.withColor(Formatting.RED) }, false)
+                return false
+            }
         }
 
         val difficulty = when (huntType) {
@@ -37,13 +40,13 @@ object RerollService {
         val canBypassLimit = CommandManager.hasPermissionOrOp(source, perms.bypassRerollLimitPermission, perms.permissionLevel, perms.opLevel)
         val canBypassCost = CommandManager.hasPermissionOrOp(source, perms.bypassRerollCostPermission, perms.permissionLevel, perms.opLevel)
 
-        if (!canBypassLimit && !rules.unlimited && rules.used >= rules.limit) {
+        if (!skipChecks && !canBypassLimit && !rules.unlimited && rules.used >= rules.limit) {
             player.sendMessage(Text.literal("You have used all ${rules.limit} rerolls today for $difficulty mission.")
                 .styled { it.withColor(Formatting.RED) }, false)
             return false
         }
 
-        if (config.economyEnabled && !canBypassCost) {
+        if (!skipChecks && config.economyEnabled && !canBypassCost) {
             if (!EconomyAdapter.charge(player, rules.cost)) {
                 player.sendMessage(Text.literal("You need ${EconomyAdapter.symbol()}${rules.cost} ${EconomyAdapter.currencyId()} to reroll.")
                     .styled { it.withColor(Formatting.RED) }, false)
@@ -73,7 +76,7 @@ object RerollService {
         val preview = CobbleHunts.createHuntInstance(entry, difficulty)
         data.previewPokemon[difficulty] = preview
 
-        if (!canBypassLimit && !rules.unlimited) {
+        if (!skipChecks && !canBypassLimit && !rules.unlimited) {
             if (config.universalRerollLimit >= 0) data.globalRerollsToday = rules.used + 1
             else data.rerollsToday[difficulty] = rules.used + 1
         }
