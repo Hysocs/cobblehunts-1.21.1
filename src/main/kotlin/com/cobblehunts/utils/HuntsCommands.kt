@@ -9,12 +9,14 @@ import net.minecraft.server.command.ServerCommandSource
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.text.Text
 import com.cobblehunts.utils.HuntsConfig
-import com.cobblehunts.CobbleHunts
 import com.cobblehunts.gui.HuntsGui
 import com.cobblehunts.gui.huntseditorgui.HuntsEditorMainGui
 import com.cobblehunts.utils.CatchingTracker
+import com.cobblehunts.utils.RerollService
 
 import com.cobblemon.mod.common.Cobblemon
+import net.fabricmc.loader.api.FabricLoader
+import net.minecraft.util.Formatting
 import kotlin.math.max
 
 object HuntsCommands {
@@ -132,6 +134,38 @@ object HuntsCommands {
                     })
                 })
             }
+            subcommand("reroll", permission = "cobblehunts.reroll") {
+                then(
+                    RequiredArgumentBuilder.argument<ServerCommandSource, String>(
+                        "huntType",
+                        StringArgumentType.word()
+                    ).apply {
+                        suggests { _, builder ->
+                            builder.suggest("soloeasy")
+                            builder.suggest("solonormal")
+                            builder.suggest("solomedium")
+                            builder.suggest("solohard")
+                            builder.buildFuture()
+                        }
+                        executes { context -> executeReroll(context) }
+
+                        // Optional target argument
+                        then(
+                            RequiredArgumentBuilder.argument<ServerCommandSource, String>(
+                                "target",
+                                StringArgumentType.word()
+                            ).apply {
+                                suggests { context, builder ->
+                                    context.source.server.playerManager.playerList
+                                        .forEach { player -> builder.suggest(player.name.string) }
+                                    builder.buildFuture()
+                                }
+                                executes { context -> executeReroll(context) }
+                            }
+                        )
+                    }
+                )
+            }
         }
         manager.register()
     }
@@ -159,6 +193,9 @@ object HuntsCommands {
     private fun executeReloadCommand(context: CommandContext<ServerCommandSource>): Int {
         val source = context.source
         HuntsConfig.reloadBlocking()
+        if (!FabricLoader.getInstance().isModLoaded("impactor")) {
+            HuntsConfig.config.economyEnabled = false
+        }
         HuntsConfig.saveConfig()
         CobbleHunts.updateDebugState()
         CatchingTracker.cleanupCache()
@@ -316,5 +353,26 @@ object HuntsCommands {
         removedList.remove(pokemon)
         source.sendMessage(Text.literal("Reverted turn-in: Returned ${pokemon.species.name} to ${targetPlayer.name.string}'s party."))
         return 1
+    }
+
+    private fun executeReroll(context: CommandContext<ServerCommandSource>): Int {
+        val source = context.source
+        val huntType = context.getArgument("huntType", String::class.java)
+
+        val target = getTargetPlayer(context)
+        if (target == null) {
+            source.sendError(Text.literal("Player not found or command executed from console without a target."))
+            return 0
+        }
+
+        val success = RerollService.tryRerollPreview(target, huntType)
+        if (source.player !is ServerPlayerEntity || source.player != target) {
+            if (success) {
+                source.sendMessage(
+                    Text.literal("Rerolled $huntType hunt for ${target.name.string}.")
+                        .styled { it.withColor(Formatting.GREEN) })
+            }
+        }
+        return if (success) 1 else 0
     }
 }
