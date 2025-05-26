@@ -11,12 +11,10 @@ import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonWriter
 import com.mojang.serialization.DynamicOps
 import kotlinx.coroutines.runBlocking
-import net.minecraft.component.DataComponentTypes
 import net.minecraft.item.ItemStack
-import net.minecraft.registry.RegistryOps
-import net.minecraft.text.Text
 import net.minecraft.util.JsonHelper
 import java.lang.RuntimeException
+import java.math.BigDecimal
 
 /**
  * Data class representing a Pokémon entry in a hunt.
@@ -96,7 +94,10 @@ data class HuntPermissions(
     var soloEasyHuntPermission: String = "cobblehunts.solo.easy",
     var soloNormalHuntPermission: String = "cobblehunts.solo.normal",
     var soloMediumHuntPermission: String = "cobblehunts.solo.medium",
-    var soloHardHuntPermission: String = "cobblehunts.solo.hard"
+    var soloHardHuntPermission: String = "cobblehunts.solo.hard",
+    var rerollPermission: String = "cobblehunts.solo.reroll.use",
+    var bypassRerollLimitPermission: String = "cobblehunts.solo.reroll.bypass.limit",
+    var bypassRerollCostPermission: String = "cobblehunts.solo.reroll.bypass.cost"
 )
 
 /**
@@ -105,7 +106,7 @@ data class HuntPermissions(
  * The non-pool settings are at the top, while all the spawn/loot pools are at the bottom.
  */
 data class HuntsConfigData(
-    override val version: String = "1.0.6",
+    override val version: String = "1.0.7",
     override val configId: String = "cobblehunts",
     var debugEnabled: Boolean = false,
     var activeGlobalHuntsAtOnce: Int = 4,
@@ -150,7 +151,23 @@ data class HuntsConfigData(
     var soloEasyLoot: MutableList<LootReward> = mutableListOf(),
     var soloNormalLoot: MutableList<LootReward> = mutableListOf(),
     var soloMediumLoot: MutableList<LootReward> = mutableListOf(),
-    var soloHardLoot: MutableList<LootReward> = mutableListOf()
+    var soloHardLoot: MutableList<LootReward> = mutableListOf(),
+    var economyEnabled: Boolean = true,
+    var rerollCurrency: String = "pokedollars",
+    var rerollCost: Map<String, BigDecimal> = mapOf(
+        "easy" to BigDecimal("100.00"),
+        "normal" to BigDecimal("200.00"),
+        "medium" to BigDecimal("300.00"),
+        "hard" to BigDecimal("400.00")
+    ),
+    var universalRerollLimit: Int = -1,
+    var maxRerollsPerDay: Map<String, Int> = mapOf(
+        "easy" to 3,
+        "normal" to 3,
+        "medium" to 3,
+        "hard" to 3
+    ),
+    var allowRerollDuplicates: Boolean = true
 ) : ConfigData
 
 object HuntsConfig {
@@ -304,7 +321,7 @@ object HuntsConfig {
         )
     }
     private val configManager = ConfigManager(
-        currentVersion = "1.0.6",
+        currentVersion = "1.0.7",
         defaultConfig = createDefaultConfig(),
         configClass = HuntsConfigData::class,
         metadata = ConfigMetadata(
@@ -348,7 +365,8 @@ object HuntsConfig {
     val config: HuntsConfigData get() = configManager.getCurrentConfig()
 
     /** Initializes and loads the config. */
-    fun initializeAndLoad() { runBlocking { configManager.reloadConfig() } }
+    fun initializeAndLoad() { runBlocking { configManager.reloadConfig() }
+                              saveConfig()  }
 
     /** Saves the current config. */
     fun saveConfig() { runBlocking { configManager.saveConfig(config) } }

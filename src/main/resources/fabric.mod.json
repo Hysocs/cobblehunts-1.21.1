@@ -48,6 +48,7 @@
 		"fabric-language-kotlin": "*"
 	},
 	"suggests": {
-		"another-mod": "*"
+		"another-mod": "*",
+		"impactor": ">5.3.0+1.21.1"
 	}
 }

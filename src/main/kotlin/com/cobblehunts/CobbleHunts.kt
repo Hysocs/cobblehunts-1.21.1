@@ -4,8 +4,6 @@ package com.cobblehunts
 import com.cobblehunts.gui.HuntsGui
 import com.cobblehunts.utils.*
 import com.cobblemon.mod.common.Cobblemon
-import com.cobblemon.mod.common.api.pokemon.Natures
-import com.cobblemon.mod.common.api.pokemon.PokemonProperties
 import com.cobblemon.mod.common.pokemon.Pokemon
 import com.everlastingutils.colors.KyoriHelper
 import com.everlastingutils.command.CommandManager
@@ -13,18 +11,18 @@ import com.everlastingutils.scheduling.SchedulerManager
 import com.everlastingutils.utils.LogDebug
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.network.ServerPlayerEntity
 import org.slf4j.LoggerFactory
+import java.time.LocalDate
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
 import kotlin.random.Random
 
 object CobbleHunts : ModInitializer {
-	private val logger = LoggerFactory.getLogger("cobblehunts")
+	val logger = LoggerFactory.getLogger("cobblehunts")
 	const val MOD_ID = "cobblehunts"
 	private val playerData = mutableMapOf<UUID, PlayerHuntData>()
 	val removedPokemonCache = mutableMapOf<UUID, MutableList<Pokemon>>()
@@ -55,6 +53,14 @@ object CobbleHunts : ModInitializer {
 		}
 		LogDebug.init(MOD_ID, false)
 		HuntsConfig.initializeAndLoad()
+
+		// Disable cost-based features if Impactor (economy mod) is not loaded
+		if (!FabricLoader.getInstance().isModLoaded("impactor")) {
+			HuntsConfig.config.economyEnabled = false
+			logger.warn("[CobbleHunts] Impactor not found, disabling all cost-based features.")
+			HuntsConfig.saveConfig()
+		}
+
 		updateDebugState()
 		HuntsCommands.registerCommands()
 		CatchingTracker.registerEvents()
@@ -164,7 +170,7 @@ object CobbleHunts : ModInitializer {
 	}
 
 	// Creates a hunt instance with inline decisions for gender, nature, and IVs.
-	private fun createHuntInstance(entry: HuntPokemonEntry, difficulty: String): HuntInstance {
+	fun createHuntInstance(entry: HuntPokemonEntry, difficulty: String): HuntInstance {
 		// only enforce gender if entry.gender != null (and not "random") and difficulty > easy
 		val requiredGender = entry.gender
 			?.takeIf { it.lowercase() != "random" && difficulty != "easy" }
@@ -364,7 +370,20 @@ data class PlayerHuntData(
 	val cooldowns: MutableMap<String, Long> = mutableMapOf(),
 	val completedGlobalHunts: MutableSet<Int> = mutableSetOf(),
 	val usedPokemon: MutableSet<UUID> = mutableSetOf()
-)
+) {
+	val rerollsToday: MutableMap<String, Int> = mutableMapOf()
+	var globalRerollsToday: Int = 0
+	var lastRerollDate: LocalDate = LocalDate.now()
+
+	fun resetRerollsIfNeeded() {
+		val today = LocalDate.now()
+		if (lastRerollDate != today) {
+			globalRerollsToday = 0
+			rerollsToday.clear()
+			lastRerollDate = today
+		}
+	}
+}
 
 data class HuntInstance(
 	val entry: HuntPokemonEntry,
