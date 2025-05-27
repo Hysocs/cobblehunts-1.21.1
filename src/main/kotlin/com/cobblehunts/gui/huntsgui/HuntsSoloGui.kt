@@ -152,6 +152,16 @@ object HuntsSoloGui {
                     return
                 }
 
+                if (CobbleHunts.isOnCooldown(player, difficulty)) {
+                    player.sendMessage(
+                        Text.literal("You are on cooldown for $difficulty missions!")
+                            .setStyle(Style.EMPTY.withItalic(false))
+                            .styled { it.withColor(Formatting.RED) },
+                        false
+                    )
+                    return
+                }
+
                 if (RerollService.tryRerollPreview(player, "solo$difficulty")) {
                     val newLayout = generateSoloLayout(player).toMutableList()
                     HuntsGui.dynamicGuiData[player] = Pair("solo", newLayout)
