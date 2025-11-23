@@ -35,17 +35,14 @@ object SpeciesMatcher {
      * Falls back to a title-cased version of the input if no match is found and defaultToConfigured is true.
      */
     fun getPrettyName(identifier: String, defaultToConfigured: Boolean = true): String {
-        // Prioritize exact name match (case-insensitive for robustness with user input)
-        PokemonSpecies.species.find { it.name.equals(identifier, ignoreCase = true) }?.let { return it.name }
 
-        // Try matching as a showdownId (case-insensitive)
-        PokemonSpecies.species.find { it.showdownId().equals(identifier, ignoreCase = true) }?.let { return it.name }
+        PokemonSpecies.implemented.find { it.name.equals(identifier, ignoreCase = true) }?.let { return it.name }
 
-        // Try matching normalized name (e.g. config "Porygon Z" to species name "Porygon-Z")
+        PokemonSpecies.implemented.find { it.showdownId().equals(identifier, ignoreCase = true) }?.let { return it.name }
+
         val normalizedIdentifier = normalize(identifier)
-        PokemonSpecies.species.find { normalize(it.name) == normalizedIdentifier }?.let { return it.name }
+        PokemonSpecies.implemented.find { normalize(it.name) == normalizedIdentifier }?.let { return it.name }
 
-        // Fallback
         return if (defaultToConfigured) identifier.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() } else identifier
     }
 
@@ -55,18 +52,11 @@ object SpeciesMatcher {
      * If a non-null return is always desired, consider returning normalized(identifier) as a last resort.
      */
     fun resolveToShowdownId(identifier: String): String? {
-        // Try matching as a showdownId first (case-insensitive)
-        PokemonSpecies.species.find { it.showdownId().equals(identifier, ignoreCase = true) }?.let { return it.showdownId() }
-
-        // Try matching by exact name (case-insensitive)
-        PokemonSpecies.species.find { it.name.equals(identifier, ignoreCase = true) }?.let { return it.showdownId() }
-
-        // Try matching by normalized name to showdownId
+        PokemonSpecies.implemented.find { it.showdownId().equals(identifier, ignoreCase = true) }?.let { return it.showdownId() }
+        PokemonSpecies.implemented.find { it.name.equals(identifier, ignoreCase = true) }?.let { return it.showdownId() }
         val normalizedIdentifier = normalize(identifier)
-        PokemonSpecies.species.find { normalize(it.name) == normalizedIdentifier }?.let { return it.showdownId() }
-
-        // If the normalized identifier itself is a known showdownId (e.g. input was "PorygonZ" and showdownId is "porygonz")
-        PokemonSpecies.species.find { it.showdownId() == normalizedIdentifier }?.let { return it.showdownId() }
+        PokemonSpecies.implemented.find { normalize(it.name) == normalizedIdentifier }?.let { return it.showdownId() }
+        PokemonSpecies.implemented.find { it.showdownId() == normalizedIdentifier }?.let { return it.showdownId() }
 
         return null
     }

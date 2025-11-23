@@ -528,7 +528,6 @@ object TurnInGui {
                 if (!SpeciesMatcher.matches(pokemon, hunt.entry.species)) continue
                 if (getAttributeMismatchReasons(pokemon, hunt).isNotEmpty()) continue
 
-
                 val selected = MutableList<Pokemon?>(6) { null }
                 selected[slot] = pokemon
                 handleConfirmTurnIn(player, selected, difficulty, null, openGui = false)
@@ -537,9 +536,18 @@ object TurnInGui {
         }
 
         if (HuntsConfig.config.globalHuntsEnabled) {
+            val data = CobbleHunts.getPlayerData(player)  // Add this to access completedGlobalHunts if needed
             CobbleHunts.globalHuntStates.withIndex().forEach { (index, hunt) ->
                 if (!SpeciesMatcher.matches(pokemon, hunt.entry.species)) return@forEach
                 if (getAttributeMismatchReasons(pokemon, hunt).isNotEmpty()) return@forEach
+
+                // NEW: Check if the hunt is already completed (mirrors the GUI logic)
+                val isCompleted = if (HuntsConfig.config.lockGlobalHuntsOnCompletionForAllPlayers) {
+                    CobbleHunts.globalCompletedHuntIndices.contains(index)
+                } else {
+                    data.completedGlobalHunts.contains(index)
+                }
+                if (isCompleted) return@forEach  // Skip if already done
 
                 val selected = MutableList<Pokemon?>(6) { null }
                 selected[slot] = pokemon

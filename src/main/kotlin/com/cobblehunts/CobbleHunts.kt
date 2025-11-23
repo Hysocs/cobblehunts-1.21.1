@@ -1,11 +1,9 @@
 package com.cobblehunts
 
 
-import com.cobblehunts.gui.HuntsGui
+import com.cobblehunts.gui.huntsgui.HuntsGui
 import com.cobblehunts.utils.*
 import com.cobblemon.mod.common.Cobblemon
-import com.cobblemon.mod.common.api.pokemon.Natures
-import com.cobblemon.mod.common.api.pokemon.PokemonProperties
 import com.cobblemon.mod.common.pokemon.Pokemon
 import com.everlastingutils.colors.KyoriHelper
 import com.everlastingutils.command.CommandManager
@@ -13,7 +11,6 @@ import com.everlastingutils.scheduling.SchedulerManager
 import com.everlastingutils.utils.LogDebug
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.network.ServerPlayerEntity

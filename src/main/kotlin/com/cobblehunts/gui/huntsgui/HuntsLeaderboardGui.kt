@@ -1,6 +1,6 @@
 package com.cobblehunts.gui.huntsgui
 
-import com.cobblehunts.gui.HuntsGui
+
 import com.cobblehunts.utils.HuntsConfig
 import com.cobblehunts.utils.LeaderboardManager
 import com.everlastingutils.gui.CustomGui

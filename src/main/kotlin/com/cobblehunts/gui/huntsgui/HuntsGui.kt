@@ -1,4 +1,4 @@
-package com.cobblehunts.gui
+package com.cobblehunts.gui.huntsgui
 
 import com.cobblehunts.CobbleHunts
 import com.cobblehunts.gui.huntsgui.HuntsGlobalGui

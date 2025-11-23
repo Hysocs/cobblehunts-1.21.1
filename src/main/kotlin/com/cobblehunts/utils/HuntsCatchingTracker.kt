@@ -56,7 +56,10 @@ object CatchingTracker {
 
         // Gather all still‐active solo and global hunts
         val activeSolo = data.activePokemon.values.filter { it.endTime == null || currentTime < it.endTime!! }
-        val activeGlobal = CobbleHunts.globalHuntStates.filter { it.endTime == null || currentTime < it.endTime!! }
+        val activeGlobal = CobbleHunts.globalHuntStates.filterIndexed { index, hunt ->
+            (hunt.endTime == null || currentTime < hunt.endTime!!) &&
+                    !CobbleHunts.globalCompletedHuntIndices.contains(index)
+        }
 
         (activeSolo + activeGlobal).forEach { hunt ->
             val entry = hunt.entry

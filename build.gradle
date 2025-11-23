@@ -91,9 +91,9 @@ dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	//modImplementation files('libs/fabric-1.6.0+1.21.1-20241205.105148-214.jar')
-	//modImplementation("com.cobblemon:fabric:${property("cobblemon_version")}")
-	modImplementation "com.cobblemon:fabric:1.6.1+1.21.1"
+    modImplementation "com.cobblemon:fabric:1.7.0+1.21.1"
+    //modImplementation("com.cobblemon:fabric:${property("cobblemon_version")}")
+	//modImplementation "com.cobblemon:fabric:1.6.1+1.21.1"
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"

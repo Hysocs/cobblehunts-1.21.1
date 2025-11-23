@@ -1,7 +1,7 @@
 package com.cobblehunts.gui.huntsgui
 
 import com.cobblehunts.CobbleHunts
-import com.cobblehunts.gui.HuntsGui
+import com.cobblehunts.gui.huntsgui.HuntsGui
 import com.cobblehunts.gui.TurnInGui
 import com.cobblehunts.utils.HuntsConfig
 import com.everlastingutils.gui.CustomGui
