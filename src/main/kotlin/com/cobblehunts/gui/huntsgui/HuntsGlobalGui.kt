@@ -220,14 +220,22 @@ object HuntsGlobalGui {
     ) {
         val slot = context.slotIndex
         val hunts = CobbleHunts.globalHuntStates
+
         if (!isExtended) {
+            // --- FIX START ---
             val n = hunts.size
             val pokemonSlots = huntSlotMap[n] ?: listOf()
             if (slot in pokemonSlots) {
                 val index = pokemonSlots.indexOf(slot)
-                if (index < hunts.size && !(HuntsConfig.config.lockGlobalHuntsOnCompletionForAllPlayers &&
-                            CobbleHunts.globalCompletedHuntIndices.contains(index))
-                ) {
+
+                // Calculate completion status correctly for the specific player
+                val isCompleted = if (HuntsConfig.config.lockGlobalHuntsOnCompletionForAllPlayers)
+                    CobbleHunts.globalCompletedHuntIndices.contains(index)
+                else
+                    CobbleHunts.getPlayerData(player).completedGlobalHunts.contains(index)
+
+                // Only allow opening if the hunt exists and is NOT completed
+                if (index < hunts.size && !isCompleted) {
                     if (context.clickType == ClickType.RIGHT) {
                         HuntsGui.openLootPoolViewGui(player, "global")
                     } else if (context.clickType == ClickType.LEFT) {
@@ -235,8 +243,9 @@ object HuntsGlobalGui {
                     }
                 }
             }
+            // --- FIX END ---
         } else {
-            // Reconstruct the extended grid mapping.
+            // Extended mode logic (this part was already mostly correct, but ensured here)
             val n = hunts.size.coerceAtMost(28)
             if (n > 0) {
                 val quotient = n / 4
@@ -244,7 +253,7 @@ object HuntsGlobalGui {
                 val rowCounts = (0 until 4).map { i -> quotient + if (i < remainder) 1 else 0 }
                 val maxCount = rowCounts.maxOrNull() ?: 1
                 val baseIdeal = computeIdealRowPositions(maxCount)
-                val slotMapping = mutableMapOf<Int, Int>() // Map GUI slot -> hunt index.
+                val slotMapping = mutableMapOf<Int, Int>()
                 var ptr = 0
                 for (row in 0 until 4) {
                     val count = rowCounts[row]
@@ -270,6 +279,7 @@ object HuntsGlobalGui {
                         CobbleHunts.globalCompletedHuntIndices.contains(index)
                     else
                         CobbleHunts.getPlayerData(player).completedGlobalHunts.contains(index)
+
                     if (!isCompleted) {
                         if (context.clickType == ClickType.RIGHT) {
                             HuntsGui.openLootPoolViewGui(player, "global")
@@ -280,6 +290,7 @@ object HuntsGlobalGui {
                 }
             }
         }
+
         val backSlot = if (isExtended) GlobalSlots.BACK_EXTENDED else GlobalSlots.BACK_NORMAL
         if (slot == backSlot) {
             HuntsGui.openMainGui(player)
