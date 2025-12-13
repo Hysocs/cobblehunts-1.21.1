@@ -112,21 +112,30 @@ object LootPoolSelectionGui {
                 textureValue = Textures.NEXT_PAGE
             )
         }
+
+        // --- MODIFIED BUTTON LORE ---
+        val addRewardLore = listOf(
+            Text.literal("Click to add a command reward").styled { it.withColor(Formatting.YELLOW) },
+            Text.literal(""),
+            Text.literal("Placeholders: ").styled { it.withColor(Formatting.GRAY) }
+                .append(Text.literal("%player%").styled { it.withColor(Formatting.AQUA) }),
+            Text.literal("Example: ").styled { it.withColor(Formatting.GRAY) }
+                .append(Text.literal("give %player% dirt").styled { it.withColor(Formatting.WHITE) }),
+            Text.literal(""),
+            Text.literal("――――――――――――――――――").styled { it.withColor(Formatting.DARK_GRAY) },
+            Text.literal("To Add An Item Reward:").styled { it.withColor(Formatting.GOLD).withUnderline(true) },
+            Text.literal("Drag & drop an item from your").styled { it.withColor(Formatting.YELLOW) },
+            Text.literal("inventory into an empty slot.").styled { it.withColor(Formatting.YELLOW) }
+        )
+
         layout[Slots.ADD_COMMAND] = CustomGui.createPlayerHeadButton(
-            textureName = "AddCommandReward",
-            title = Text.literal("Add Command Reward").styled { it.withColor(Formatting.GREEN) },
-            lore = listOf(
-                Text.literal("Click to add a command reward").styled { it.withColor(Formatting.YELLOW) },
-                Text.literal(""),
-                Text.literal("Available placeholders:").styled { it.withColor(Formatting.GRAY) },
-                Text.literal("%player%").styled { it.withColor(Formatting.AQUA) }
-                    .append(Text.literal(" → player name").styled { it.withColor(Formatting.GRAY) }),
-                Text.literal(""),
-                Text.literal("Examples:").styled { it.withColor(Formatting.GRAY) },
-                Text.literal("give %player% minecraft:experience_bottle 32").styled { it.withColor(Formatting.WHITE) }
-            ),
+            textureName = "AddReward",
+            title = Text.literal("Add a Reward").styled { it.withColor(Formatting.GREEN) },
+            lore = addRewardLore,
             textureValue = Textures.ADD_COMMAND
         )
+        // --- END OF MODIFICATION ---
+
         return layout
     }
 

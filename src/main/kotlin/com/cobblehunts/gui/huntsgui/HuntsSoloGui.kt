@@ -1,7 +1,6 @@
 package com.cobblehunts.gui.huntsgui
 
 import com.cobblehunts.CobbleHunts
-import com.cobblehunts.gui.huntsgui.HuntsGui
 import com.cobblehunts.gui.TurnInGui
 import com.cobblehunts.utils.HuntsConfig
 import com.everlastingutils.gui.CustomGui
@@ -32,10 +31,12 @@ object HuntsSoloGui {
     )
 
     fun openSoloHuntsGui(player: ServerPlayerEntity) {
-        checkExpiredHunts(player)
+        // We ensure previews exist if we are in a state to accept them
         CobbleHunts.refreshPreviewPokemon(player)
+
         val layout = generateSoloLayout(player).toMutableList()
         HuntsGui.dynamicGuiData[player] = Pair("solo", layout)
+
         CustomGui.openGui(
             player,
             "Solo Hunts",
@@ -54,15 +55,16 @@ object HuntsSoloGui {
 
         for ((index, difficulty) in enabledDifficulties.withIndex()) {
             val indicatorSlot = slots[index] - 9
-            val data = CobbleHunts.getPlayerData(player)
-            val activeInstance = data.activePokemon[difficulty]
-            val isActive = activeInstance != null && (activeInstance.endTime == null || System.currentTimeMillis() < activeInstance.endTime!!)
-            layout[indicatorSlot] = if (isActive) {
-                ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
-            } else {
-                ItemStack(Items.BLACK_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
+            val state = CobbleHunts.getSoloHuntDisplayState(player, difficulty)
+
+            // Indicator Light
+            layout[indicatorSlot] = when (state) {
+                is CobbleHunts.SoloHuntDisplayState.Active -> ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
+                else -> ItemStack(Items.BLACK_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
             }
-            layout[slots[index]] = HuntsGuiUtils.getSoloDynamicItem(player, difficulty)
+
+            // Main Icon
+            layout[slots[index]] = HuntsGuiUtils.getSoloDynamicItem(player, difficulty, state)
         }
 
         layout[SoloSlots.BACK] = CustomGui.createPlayerHeadButton(
@@ -74,6 +76,7 @@ object HuntsSoloGui {
         return layout
     }
 
+    // Called by the GUI refresher task
     fun updateSoloDynamicItems(player: ServerPlayerEntity, layout: MutableList<ItemStack>) {
         val enabledDifficulties = getEnabledSoloDifficulties()
         val count = enabledDifficulties.size
@@ -81,15 +84,15 @@ object HuntsSoloGui {
 
         for ((index, difficulty) in enabledDifficulties.withIndex()) {
             val indicatorSlot = slots[index] - 9
-            val data = CobbleHunts.getPlayerData(player)
-            val activeInstance = data.activePokemon[difficulty]
-            val isActive = activeInstance != null && (activeInstance.endTime == null || System.currentTimeMillis() < activeInstance.endTime!!)
-            layout[indicatorSlot] = if (isActive) {
-                ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
-            } else {
-                ItemStack(Items.BLACK_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
+            val state = CobbleHunts.getSoloHuntDisplayState(player, difficulty)
+
+            // Indicator
+            layout[indicatorSlot] = when (state) {
+                is CobbleHunts.SoloHuntDisplayState.Active -> ItemStack(Items.GREEN_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
+                else -> ItemStack(Items.BLACK_STAINED_GLASS_PANE).apply { setCustomName(Text.literal("")) }
             }
-            layout[slots[index]] = HuntsGuiUtils.getSoloDynamicItem(player, difficulty)
+            // Main Item
+            layout[slots[index]] = HuntsGuiUtils.getSoloDynamicItem(player, difficulty, state)
         }
     }
 
@@ -101,79 +104,56 @@ object HuntsSoloGui {
         if (context.slotIndex in slots) {
             val index = slots.indexOf(context.slotIndex)
             val difficulty = enabledDifficulties[index]
-            if (!CobbleHunts.hasHuntPermission(player, difficulty)) {
-                player.sendMessage(
-                    Text.literal("You do not have permission for $difficulty hunts!")
-                        .setStyle(Style.EMPTY.withItalic(false))
-                        .styled { it.withColor(Formatting.RED) },
-                    false
-                )
+            val state = CobbleHunts.getSoloHuntDisplayState(player, difficulty)
+
+            // Permission Check
+            if (state is CobbleHunts.SoloHuntDisplayState.Locked) {
+                player.sendMessage(Text.literal("You do not have permission for $difficulty hunts!").styled { it.withColor(Formatting.RED) }, false)
                 return
             }
-            val data = CobbleHunts.getPlayerData(player)
-            val activeInstance = data.activePokemon[difficulty]
+
+            // Right Click: View Loot
             if (context.clickType == ClickType.RIGHT) {
                 HuntsGui.openLootPoolViewGui(player, difficulty)
                 return
             }
-            if (activeInstance == null) {
-                if (CobbleHunts.isOnCooldown(player, difficulty)) {
-                    player.sendMessage(
-                        Text.literal("You are on cooldown for $difficulty missions!")
-                            .setStyle(Style.EMPTY.withItalic(false))
-                            .styled { it.withColor(Formatting.RED) },
-                        false
-                    )
-                } else {
-                    val instance = CobbleHunts.getPreviewPokemon(player, difficulty)
-                    if (instance != null) {
-                        CobbleHunts.activateMission(player, difficulty, instance)
-                        player.sendMessage(
-                            Text.literal("Activated $difficulty mission for ${instance.entry.species}!")
-                                .setStyle(Style.EMPTY.withItalic(false))
-                                .styled { it.withColor(Formatting.GREEN) },
-                            false
-                        )
+
+            // Left Click Action based on State
+            when (state) {
+                is CobbleHunts.SoloHuntDisplayState.Active -> {
+                    // Turn In
+                    TurnInGui.openTurnInGui(player, difficulty)
+                }
+                is CobbleHunts.SoloHuntDisplayState.Ready -> {
+                    // Start Hunt
+                    state.preview?.let {
+                        CobbleHunts.activateMission(player, difficulty, it)
+                        player.sendMessage(Text.literal("Activated $difficulty mission for ${it.entry.species}!").styled { s -> s.withColor(Formatting.GREEN) }, false)
+
+                        // Immediately refresh GUI
                         val newLayout = generateSoloLayout(player).toMutableList()
                         HuntsGui.dynamicGuiData[player] = Pair("solo", newLayout)
                         CustomGui.refreshGui(player, newLayout)
                     }
                 }
-            } else {
-                TurnInGui.openTurnInGui(player, difficulty)
+                is CobbleHunts.SoloHuntDisplayState.Cooldown -> {
+                    player.sendMessage(Text.literal("You are on cooldown for $difficulty missions!").styled { it.withColor(Formatting.RED) }, false)
+                }
+                is CobbleHunts.SoloHuntDisplayState.Locked -> {} // Handled above
             }
         } else if (context.slotIndex == SoloSlots.BACK) {
             HuntsGui.openMainGui(player)
         }
     }
 
-    fun checkExpiredHunts(player: ServerPlayerEntity) {
-        val data = CobbleHunts.getPlayerData(player)
-        val currentTime = System.currentTimeMillis()
-        val difficulties = listOf("easy", "normal", "medium", "hard")
-        difficulties.forEach { difficulty ->
-            val activeInstance = data.activePokemon[difficulty]
-            if (activeInstance != null && activeInstance.endTime != null && currentTime >= activeInstance.endTime!!) {
-                data.activePokemon.remove(difficulty)
-                val cooldownDuration = when (difficulty) {
-                    "easy" -> HuntsConfig.config.soloEasyCooldown
-                    "normal" -> HuntsConfig.config.soloNormalCooldown
-                    "medium" -> HuntsConfig.config.soloMediumCooldown
-                    "hard" -> HuntsConfig.config.soloHardCooldown
-                    else -> 0
-                }
-                data.cooldowns[difficulty] = currentTime + cooldownDuration * 1000L
-            }
-        }
-    }
-
     private fun getEnabledSoloDifficulties(): List<String> {
-        val config = HuntsConfig.config
+        val settings = HuntsConfig.settings
         return listOf(
-            "easy" to config.soloEasyEnabled,
-            "normal" to config.soloNormalEnabled,
-            "medium" to config.soloMediumEnabled,
-            "hard" to config.soloHardEnabled
+            "easy" to settings.soloEasyEnabled,
+            "normal" to settings.soloNormalEnabled,
+            "medium" to settings.soloMediumEnabled,
+            "hard" to settings.soloHardEnabled
         ).filter { it.second }.map { it.first }
     }
+
 }

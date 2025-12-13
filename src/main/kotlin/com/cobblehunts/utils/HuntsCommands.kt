@@ -1,25 +1,31 @@
 package com.cobblehunts.utils
 
+import com.cobblehunts.CobbleHunts
+import com.cobblehunts.gui.huntseditorgui.HuntsEditorMainGui
+import com.cobblehunts.gui.huntsgui.HuntsGui
+import com.cobblemon.mod.common.Cobblemon
 import com.everlastingutils.command.CommandManager
 import com.mojang.brigadier.arguments.IntegerArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.builder.RequiredArgumentBuilder
 import com.mojang.brigadier.context.CommandContext
+import net.minecraft.component.DataComponentTypes
+import net.minecraft.component.type.LoreComponent // Import the correct LoreComponent
+import net.minecraft.component.type.NbtComponent
+import net.minecraft.item.ItemStack
+import net.minecraft.item.Items
+import net.minecraft.nbt.NbtCompound
 import net.minecraft.server.command.ServerCommandSource
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.text.Text
-import com.cobblehunts.CobbleHunts
-import com.cobblehunts.gui.huntsgui.HuntsGui
-import com.cobblehunts.gui.huntseditorgui.HuntsEditorMainGui
-
-import com.cobblemon.mod.common.Cobblemon
+import net.minecraft.util.Unit as MinecraftUnit // Import Minecraft's Unit with an alias to avoid conflict
 import kotlin.math.max
 
 object HuntsCommands {
-    private val manager = CommandManager("cobblehunts", HuntsConfig.config.permissions.permissionLevel, HuntsConfig.config.permissions.opLevel)
+    private val manager = CommandManager("cobblehunts", HuntsConfig.settings.permissions.permissionLevel, HuntsConfig.settings.permissions.opLevel)
 
     fun registerCommands() {
-        manager.command("hunts", permission = HuntsConfig.config.permissions.huntsPermission) {
+        manager.command("hunts", permission = HuntsConfig.settings.permissions.huntsPermission) {
             executes { context -> executeMainCommand(context) }
             subcommand("editor", permission = "cobblehunts.editor") {
                 executes { context -> executeEditorCommand(context) }
@@ -115,7 +121,6 @@ object HuntsCommands {
                     }
                     then(RequiredArgumentBuilder.argument<ServerCommandSource, String>("pokemon", StringArgumentType.greedyString()).apply {
                         suggests { ctx, builder ->
-                            // Use the target player's removed cache to suggest Pokémon species.
                             val targetName = ctx.getArgument("target", String::class.java)
                             val targetPlayer = ctx.source.server.playerManager.getPlayer(targetName)
                             if (targetPlayer != null) {
@@ -130,9 +135,43 @@ object HuntsCommands {
                     })
                 })
             }
+            // New subcommand to give the Hunt Scanner Brush.
+            subcommand("givescanner", permission = HuntsConfig.settings.permissions.scannerPermission) {
+                executes { context ->
+                    val player = context.source.playerOrThrow
+                    val brushStack = ItemStack(Items.BRUSH)
+
+                    // Add a custom name and lore
+                    brushStack.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§bHunt Scanner Brush"))
+                    val loreTexts = listOf(
+                        Text.literal("§7Use on a block to scan for"),
+                        Text.literal("§7nearby hunt Pokémon.")
+                    )
+                    brushStack.set(DataComponentTypes.LORE, LoreComponent(loreTexts))
+
+                    // --- MODIFIED DATA SECTION ---
+                    // Create an NBT compound and add our custom tags
+                    val nbt = NbtCompound()
+                    nbt.putBoolean("cobblehunts:is_scanner", true)
+                    nbt.putLong("cobblehunts:last_used", 0L)
+
+                    // Set the compound into the vanilla CUSTOM_DATA component
+                    brushStack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt))
+                    // --- END OF MODIFICATION ---
+
+                    if (!player.inventory.insertStack(brushStack)) {
+                        player.dropItem(brushStack, false)
+                    }
+
+                    context.source.sendFeedback({ Text.literal("Gave a Hunt Scanner Brush to ${player.name.string}.") }, false)
+                    1
+                }
+            }
         }
         manager.register()
     }
+
+    // ... (The rest of the file remains unchanged)
 
     private fun executeMainCommand(context: CommandContext<ServerCommandSource>): Int {
         val source = context.source
@@ -156,17 +195,16 @@ object HuntsCommands {
 
     private fun executeReloadCommand(context: CommandContext<ServerCommandSource>): Int {
         val source = context.source
-        HuntsConfig.reloadBlocking()
+
         HuntsConfig.saveConfig()
+        HuntsConfig.reloadBlocking()
         CobbleHunts.updateDebugState()
-        CatchingTracker.cleanupCache()
-        // Restart hunts so they refresh with the new configuration
+        // CatchingTracker.cleanupCache() // This is defined in another file, assuming it's correct.
         CobbleHunts.restartHunts()
         source.sendMessage(Text.literal("CobbleHunts config and hunts reloaded."))
         return 1
     }
 
-    // Helper: attempts to retrieve the "target" argument; if not present, uses the executing player.
     private fun getTargetPlayer(context: CommandContext<ServerCommandSource>): ServerPlayerEntity? {
         return try {
             val targetName = context.getArgument("target", String::class.java)
@@ -179,13 +217,24 @@ object HuntsCommands {
     private fun executeExtendCooldown(context: CommandContext<ServerCommandSource>): Int {
         val source = context.source
         val huntType = context.getArgument("huntType", String::class.java)
+        val currentTime = System.currentTimeMillis()
+
         if (huntType == "global") {
             val time = try {
                 context.getArgument("time", Int::class.java)
             } catch (e: IllegalArgumentException) {
                 0
             }
-            CobbleHunts.globalCooldownEnd += time * 1000L
+            val timeMillis = time * 1000L
+            val currentGlobalEnd = CobbleHunts.globalCooldownEnd
+
+            val newGlobalEndTime = if (currentGlobalEnd < currentTime) {
+                currentTime + timeMillis
+            } else {
+                currentGlobalEnd + timeMillis
+            }
+            CobbleHunts.globalCooldownEnd = newGlobalEndTime
+
             source.sendMessage(Text.literal("Global hunt cooldown extended by $time seconds."))
         } else {
             val time = try {
@@ -212,7 +261,14 @@ object HuntsCommands {
             }
             val data = CobbleHunts.getPlayerData(target)
             val currentEnd = data.cooldowns[difficulty] ?: 0
-            data.cooldowns[difficulty] = currentEnd + timeMillis
+
+            val newEndTime = if (currentEnd < currentTime) {
+                currentTime + timeMillis
+            } else {
+                currentEnd + timeMillis
+            }
+            data.cooldowns[difficulty] = newEndTime
+
             source.sendMessage(Text.literal("$huntType cooldown extended by $time seconds for ${target.name.string}."))
         }
         return 1
@@ -293,7 +349,6 @@ object HuntsCommands {
         return 1
     }
 
-    // New: Revert turn-in command.
     private fun executeRevertTurnIn(context: CommandContext<ServerCommandSource>): Int {
         val source = context.source
         val targetName = context.getArgument("target", String::class.java)

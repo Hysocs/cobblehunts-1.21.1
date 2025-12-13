@@ -1183,7 +1183,7 @@ object HuntsGlobalSettingsGui {
 
     private fun addActiveGlobalHuntsSection(layout: MutableList<ItemStack>, decreaseSlot: Int, displaySlot: Int, increaseSlot: Int) {
         val label = "Active Global Hunts"
-        val currentValue = HuntsConfig.config.activeGlobalHuntsAtOnce
+        val currentValue = HuntsConfig.settings.activeGlobalHuntsAtOnce
         layout[decreaseSlot] = createAdjustmentButton(
             "Decrease", -1, -5, Textures.DECREASE, label, currentValue, isTimer = false, minValue = 1, maxValue = 7
         )
@@ -1315,11 +1315,11 @@ object HuntsGlobalSettingsGui {
     }
 
     private fun getTimerValue(configKey: String, mode: TimerMode): Int = when (configKey) {
-        "soloEasy" -> if (mode == TimerMode.COOLDOWN) HuntsConfig.config.soloEasyCooldown else HuntsConfig.config.soloEasyTimeLimit
-        "soloNormal" -> if (mode == TimerMode.COOLDOWN) HuntsConfig.config.soloNormalCooldown else HuntsConfig.config.soloNormalTimeLimit
-        "soloMedium" -> if (mode == TimerMode.COOLDOWN) HuntsConfig.config.soloMediumCooldown else HuntsConfig.config.soloMediumTimeLimit
-        "soloHard" -> if (mode == TimerMode.COOLDOWN) HuntsConfig.config.soloHardCooldown else HuntsConfig.config.soloHardTimeLimit
-        "global" -> if (mode == TimerMode.COOLDOWN) HuntsConfig.config.globalCooldown else HuntsConfig.config.globalTimeLimit
+        "soloEasy" -> if (mode == TimerMode.COOLDOWN) HuntsConfig.settings.soloEasyCooldown else HuntsConfig.settings.soloEasyTimeLimit
+        "soloNormal" -> if (mode == TimerMode.COOLDOWN) HuntsConfig.settings.soloNormalCooldown else HuntsConfig.settings.soloNormalTimeLimit
+        "soloMedium" -> if (mode == TimerMode.COOLDOWN) HuntsConfig.settings.soloMediumCooldown else HuntsConfig.settings.soloMediumTimeLimit
+        "soloHard" -> if (mode == TimerMode.COOLDOWN) HuntsConfig.settings.soloHardCooldown else HuntsConfig.settings.soloHardTimeLimit
+        "global" -> if (mode == TimerMode.COOLDOWN) HuntsConfig.settings.globalCooldown else HuntsConfig.settings.globalTimeLimit
         else -> 0
     }
 
@@ -1340,18 +1340,17 @@ object HuntsGlobalSettingsGui {
             return
         }
 
-
         when (fieldName) {
-            "soloEasyCooldown" -> HuntsConfig.config.soloEasyCooldown = newValue
-            "soloNormalCooldown" -> HuntsConfig.config.soloNormalCooldown = newValue
-            "soloMediumCooldown" -> HuntsConfig.config.soloMediumCooldown = newValue
-            "soloHardCooldown" -> HuntsConfig.config.soloHardCooldown = newValue
-            "globalCooldown" -> HuntsConfig.config.globalCooldown = newValue
-            "soloEasyTimeLimit" -> HuntsConfig.config.soloEasyTimeLimit = newValue
-            "soloNormalTimeLimit" -> HuntsConfig.config.soloNormalTimeLimit = newValue
-            "soloMediumTimeLimit" -> HuntsConfig.config.soloMediumTimeLimit = newValue
-            "soloHardTimeLimit" -> HuntsConfig.config.soloHardTimeLimit = newValue
-            "globalTimeLimit" -> HuntsConfig.config.globalTimeLimit = newValue
+            "soloEasyCooldown" -> HuntsConfig.settings.soloEasyCooldown = newValue
+            "soloNormalCooldown" -> HuntsConfig.settings.soloNormalCooldown = newValue
+            "soloMediumCooldown" -> HuntsConfig.settings.soloMediumCooldown = newValue
+            "soloHardCooldown" -> HuntsConfig.settings.soloHardCooldown = newValue
+            "globalCooldown" -> HuntsConfig.settings.globalCooldown = newValue
+            "soloEasyTimeLimit" -> HuntsConfig.settings.soloEasyTimeLimit = newValue
+            "soloNormalTimeLimit" -> HuntsConfig.settings.soloNormalTimeLimit = newValue
+            "soloMediumTimeLimit" -> HuntsConfig.settings.soloMediumTimeLimit = newValue
+            "soloHardTimeLimit" -> HuntsConfig.settings.soloHardTimeLimit = newValue
+            "globalTimeLimit" -> HuntsConfig.settings.globalTimeLimit = newValue
         }
         HuntsConfig.saveConfig()
         CustomGui.refreshGui(player, generateLayout(player))
@@ -1364,7 +1363,7 @@ object HuntsGlobalSettingsGui {
     }
 
     private fun adjustActiveGlobalHunts(player: ServerPlayerEntity, delta: Int) {
-        val currentValue = HuntsConfig.config.activeGlobalHuntsAtOnce
+        val currentValue = HuntsConfig.settings.activeGlobalHuntsAtOnce
         val newValue = (currentValue + delta).coerceIn(1, 7)
 
         if (currentValue == newValue && delta != 0) {
@@ -1373,7 +1372,7 @@ object HuntsGlobalSettingsGui {
             return
         }
 
-        HuntsConfig.config.activeGlobalHuntsAtOnce = newValue
+        HuntsConfig.settings.activeGlobalHuntsAtOnce = newValue
         HuntsConfig.saveConfig()
         CustomGui.refreshGui(player, generateLayout(player))
         player.sendMessage(

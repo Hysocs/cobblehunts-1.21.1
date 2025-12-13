@@ -8,10 +8,8 @@ import com.cobblehunts.utils.*
 import com.cobblemon.mod.common.Cobblemon
 import com.cobblemon.mod.common.CobblemonItems
 import com.cobblemon.mod.common.api.pokemon.stats.Stats
-import com.cobblemon.mod.common.api.storage.pc.PCPosition
 import com.cobblemon.mod.common.item.PokemonItem
 import com.cobblemon.mod.common.pokemon.Pokemon
-import com.cobblemon.mod.common.pokemon.Gender
 import com.everlastingutils.gui.CustomGui
 import com.everlastingutils.gui.InteractionContext
 import com.everlastingutils.gui.setCustomName
@@ -63,18 +61,20 @@ object TurnInGui {
         huntIndex: Int?
     ): List<ItemStack> {
         val layout = MutableList(GUI_SIZE) { createFillerPane() }
-        val party = CobbleHunts.getPlayerParty(player)
+        val party = CobbleHunts.getPlayerParty(player) // This correctly returns a List<Pokemon>
         val activeHunt = getActiveHunt(player, rarity, huntIndex) ?: return layout
 
         PARTY_SLOTS.forEachIndexed { index, slot ->
-            val pokemon = party.getOrNull(index)
-            val isThisSelected = (currentSelection is PartySelection && currentSelection.partyIndex == index)
+            // Since 'party' is a List, we can safely use getOrNull or a bounds check.
+            // A manual check is safest if you're having environment issues.
+            val pokemon = if (index < party.size) party[index] else null
+            val isThisSelected = pokemon != null && currentSelection is PartySelection && currentSelection.uuid == pokemon.uuid
             layout[slot] = createPartySlotItem(pokemon, isThisSelected)
         }
 
         TURN_IN_BUTTON_SLOTS.forEachIndexed { index, slot ->
-            val pokemonInSlot = party.getOrNull(index)
-            val isThisSelected = (currentSelection is PartySelection && currentSelection.partyIndex == index)
+            val pokemonInSlot = if (index < party.size) party[index] else null
+            val isThisSelected = pokemonInSlot != null && currentSelection is PartySelection && currentSelection.uuid == pokemonInSlot.uuid
             layout[slot] = createTurnInButton(player, pokemonInSlot, isThisSelected, activeHunt)
         }
 
@@ -113,6 +113,48 @@ object TurnInGui {
         return layout
     }
 
+    private fun resolveSelection(player: ServerPlayerEntity, selection: HuntSelection?): Pokemon? {
+        if (selection == null) {
+            return null
+        }
+
+        // The 'when' statement is now an expression that calculates the value of 'foundPokemon'.
+        // There are no 'return' statements inside the branches.
+        val foundPokemon: Pokemon? = when (selection) {
+            is PartySelection -> {
+                val party = Cobblemon.storage.getParty(player)
+                val pokemonAtIndex = party.get(selection.partyIndex)
+
+                // Use an if/else expression to determine the value for this branch.
+                if (pokemonAtIndex?.uuid == selection.uuid) {
+                    pokemonAtIndex // This is the resulting value if the check succeeds.
+                } else {
+                    // Otherwise, the result is whatever party.find returns.
+                    party.find { it.uuid == selection.uuid }
+                }
+            }
+            is PcSelection -> {
+                val pc = Cobblemon.storage.getPC(player)
+                val box = if (selection.boxIndex < pc.boxes.size) pc.boxes[selection.boxIndex] else null
+
+                if (box == null) {
+                    null // The result is null if the box doesn't exist.
+                } else {
+                    val pokemonInSlot = box.get(selection.pcSlot)
+                    // Use another if/else expression to find the pokemon.
+                    if (pokemonInSlot?.uuid == selection.uuid) {
+                        pokemonInSlot // Result is the pokemon from the original slot.
+                    } else {
+                        box.find { it?.uuid == selection.uuid } // Fallback result.
+                    }
+                }
+            }
+        }
+
+        // A single, clear return statement at the end of the function.
+        return foundPokemon
+    }
+
     private fun handleTurnInInteraction(
         context: InteractionContext,
         player: ServerPlayerEntity,
@@ -124,19 +166,48 @@ object TurnInGui {
             in TURN_IN_BUTTON_SLOTS -> {
                 val partyIndex = TURN_IN_BUTTON_SLOTS.indexOf(context.slotIndex)
                 val party = CobbleHunts.getPlayerParty(player)
+                // Use getOrNull for safety as the party list can have nulls
                 val pokemon = party.getOrNull(partyIndex) ?: return
 
                 val activeHunt = getActiveHunt(player, rarity, huntIndex) ?: return
-                if (!SpeciesMatcher.matches(pokemon, activeHunt.entry.species)) return
-                if (getAttributeMismatchReasons(pokemon, activeHunt).isNotEmpty()) return
 
+                // --- ALL VALIDATION CHECKS MUST HAPPEN HERE ---
+
+                // 1. Check if already used
+                if (CobbleHunts.getPlayerData(player).usedPokemon.contains(pokemon.uuid)) {
+                    return
+                }
+
+                // 2. Check Species
+                if (!SpeciesMatcher.matches(pokemon, activeHunt.entry.species)) {
+                    return
+                }
+
+                // 3. Check Attributes (Gender, Nature, IVs, etc.)
+                if (getAttributeMismatchReasons(pokemon, activeHunt).isNotEmpty()) {
+                    return
+                }
+
+                // 4. ADDED: Check Capture Time (This was the missing check)
+                if (HuntsConfig.settings.onlyAllowTurnInIfCapturedAfterHuntStarted) {
+                    val captureTime = CatchingTracker.getCaptureTime(pokemon.uuid)
+                    val huntStart = activeHunt.startTime ?: 0L
+                    if (captureTime == null || captureTime < huntStart) {
+                        // If the Pokémon was captured too early, do not select it. Just stop.
+                        return
+                    }
+                }
+
+                // If all checks pass, THEN we can select it.
                 refreshGui(player, PartySelection(partyIndex, pokemon.uuid), rarity, huntIndex)
             }
             PC_BUTTON_SLOT -> {
                 HuntPCGui.open(player, rarity, huntIndex)
             }
             CANCEL_BUTTON_SLOT -> {
-                refreshGui(player, null, rarity, huntIndex)
+                if (currentSelection != null) { // Only refresh if something is selected
+                    refreshGui(player, null, rarity, huntIndex)
+                }
             }
             CONFIRM_BUTTON_SLOT -> {
                 if (currentSelection != null) {
@@ -155,13 +226,7 @@ object TurnInGui {
         }
     }
 
-    private fun resolveSelection(player: ServerPlayerEntity, selection: HuntSelection?): Pokemon? {
-        if (selection == null) return null
-        return when (selection) {
-            is PartySelection -> Cobblemon.storage.getParty(player).get(selection.partyIndex)
-            is PcSelection -> Cobblemon.storage.getPC(player).boxes.getOrNull(selection.boxIndex)?.get(selection.pcSlot)
-        }
-    }
+
 
     private fun createPartySlotItem(pokemon: Pokemon?, isSelected: Boolean): ItemStack {
         return when {
@@ -250,7 +315,7 @@ object TurnInGui {
                 "NotTarget", Text.literal("Incorrect Species").styled { it.withColor(Formatting.RED) }, emptyList(), Textures.NOT_TARGET
             )
         }
-        if (HuntsConfig.config.onlyAllowTurnInIfCapturedAfterHuntStarted) {
+        if (HuntsConfig.settings.onlyAllowTurnInIfCapturedAfterHuntStarted) {
             val captureTime = CatchingTracker.getCaptureTime(pokemon.uuid)
             val huntStart = activeHunt.startTime ?: 0L
             if (captureTime == null || captureTime < huntStart) {
@@ -278,7 +343,7 @@ object TurnInGui {
 
     private fun createConfirmButton(isPcSelection: Boolean): ItemStack {
         val lore = mutableListOf<Text>()
-        if (HuntsConfig.config.takeMonOnTurnIn) {
+        if (HuntsConfig.settings.takeMonOnTurnIn) {
             lore.add(Text.literal("Confirm: Pokémon will be taken.").styled { it.withColor(Formatting.GRAY) })
         } else {
             lore.add(Text.literal("Confirm: Pokémon will be checked & returned.").styled { it.withColor(Formatting.GRAY) })
@@ -304,7 +369,7 @@ object TurnInGui {
         val data = CobbleHunts.getPlayerData(player)
 
         if (rarity == "global" && huntIndex != null) {
-            val isCompleted = if (HuntsConfig.config.lockGlobalHuntsOnCompletionForAllPlayers)
+            val isCompleted = if (HuntsConfig.settings.lockGlobalHuntsOnCompletionForAllPlayers)
                 CobbleHunts.globalCompletedHuntIndices.contains(huntIndex)
             else
                 data.completedGlobalHunts.contains(huntIndex)
@@ -338,7 +403,7 @@ object TurnInGui {
         }
 
         // Config check: Must be captured after start?
-        if (HuntsConfig.config.onlyAllowTurnInIfCapturedAfterHuntStarted) {
+        if (HuntsConfig.settings.onlyAllowTurnInIfCapturedAfterHuntStarted) {
             val captureTime = CatchingTracker.getCaptureTime(pokemon.uuid)
             val huntStart = activeHunt.startTime ?: 0L
             if (captureTime == null || captureTime < huntStart) return
@@ -348,7 +413,7 @@ object TurnInGui {
         data.usedPokemon.add(pokemon.uuid)
 
         // Handle taking the pokemon if config enabled
-        if (HuntsConfig.config.takeMonOnTurnIn) {
+        if (HuntsConfig.settings.takeMonOnTurnIn) {
             CobbleHunts.removedPokemonCache.getOrPut(player.uuid) { mutableListOf() }.add(pokemon)
             when (selection) {
                 is PartySelection -> Cobblemon.storage.getParty(player).remove(pokemon)
@@ -364,7 +429,7 @@ object TurnInGui {
             val rewardStrings = activeHunt.rewards.map { getRewardString(it, ops) }
             val rewardMessage = rewardStrings.joinToString(", ")
             val speciesName = SpeciesMatcher.getPrettyName(activeHunt.entry.species)
-            val msg = HuntsConfig.config.globalHuntCompletionMessage
+            val msg = HuntsConfig.settings.globalHuntCompletionMessage
                 .replace("%player%", player.name.string)
                 .replace("%pokemon%", speciesName)
                 .replace("%reward%", rewardMessage)
@@ -395,11 +460,11 @@ object TurnInGui {
 
     private fun processRewardsAndLeaderboard(player: ServerPlayerEntity, rarity: String, pokemon: Pokemon, rewards: List<LootReward>) {
         val points = when (rarity) {
-            "easy" -> HuntsConfig.config.soloEasyPoints
-            "normal" -> HuntsConfig.config.soloNormalPoints
-            "medium" -> HuntsConfig.config.soloMediumPoints
-            "hard" -> HuntsConfig.config.soloHardPoints
-            "global" -> HuntsConfig.config.globalPoints
+            "easy" -> HuntsConfig.settings.soloEasyPoints
+            "normal" -> HuntsConfig.settings.soloNormalPoints
+            "medium" -> HuntsConfig.settings.soloMediumPoints
+            "hard" -> HuntsConfig.settings.soloHardPoints
+            "global" -> HuntsConfig.settings.globalPoints
             else -> 0
         }
         if (points > 0) LeaderboardManager.addPoints(player.name.string, points)
@@ -417,7 +482,7 @@ object TurnInGui {
                 }
             }
             if (rarity != "global") {
-                val message = HuntsConfig.config.soloHuntCompletionMessage.replace("%reward%", rewardMessage)
+                val message = HuntsConfig.settings.soloHuntCompletionMessage.replace("%reward%", rewardMessage)
                 CobbleHunts.broadcast(player.server, message, player)
             }
         }
@@ -425,15 +490,15 @@ object TurnInGui {
     private fun markHuntComplete(player: ServerPlayerEntity, rarity: String, huntIndex: Int?) {
         val data = CobbleHunts.getPlayerData(player)
         if (rarity == "global" && huntIndex != null) {
-            if (HuntsConfig.config.lockGlobalHuntsOnCompletionForAllPlayers) CobbleHunts.globalCompletedHuntIndices.add(huntIndex)
+            if (HuntsConfig.settings.lockGlobalHuntsOnCompletionForAllPlayers) CobbleHunts.globalCompletedHuntIndices.add(huntIndex)
             else data.completedGlobalHunts.add(huntIndex)
         } else {
             data.activePokemon.remove(rarity)
             val cooldownTime = when (rarity) {
-                "easy" -> HuntsConfig.config.soloEasyCooldown
-                "normal" -> HuntsConfig.config.soloNormalCooldown
-                "medium" -> HuntsConfig.config.soloMediumCooldown
-                "hard" -> HuntsConfig.config.soloHardCooldown
+                "easy" -> HuntsConfig.settings.soloEasyCooldown
+                "normal" -> HuntsConfig.settings.soloNormalCooldown
+                "medium" -> HuntsConfig.settings.soloMediumCooldown
+                "hard" -> HuntsConfig.settings.soloHardCooldown
                 else -> 0
             }
             if (cooldownTime > 0) data.cooldowns[rarity] = System.currentTimeMillis() + (cooldownTime * 1000L)

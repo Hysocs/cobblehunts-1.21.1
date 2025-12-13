@@ -100,15 +100,15 @@ object HuntsLeaderboard {
             lore = listOf(
                 Text.literal("Complete hunts to earn points!").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) },
                 Text.literal("Global Hunt: ").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }
-                    .append(Text.literal("${HuntsConfig.config.globalPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }),
+                    .append(Text.literal("${HuntsConfig.settings.globalPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }),
                 Text.literal("Easy Hunt: ").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }
-                    .append(Text.literal("${HuntsConfig.config.soloEasyPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }),
+                    .append(Text.literal("${HuntsConfig.settings.soloEasyPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }),
                 Text.literal("Normal Hunt: ").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }
-                    .append(Text.literal("${HuntsConfig.config.soloNormalPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }),
+                    .append(Text.literal("${HuntsConfig.settings.soloNormalPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }),
                 Text.literal("Medium Hunt: ").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }
-                    .append(Text.literal("${HuntsConfig.config.soloMediumPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }),
+                    .append(Text.literal("${HuntsConfig.settings.soloMediumPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) }),
                 Text.literal("Hard Hunt: ").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GRAY) }
-                    .append(Text.literal("${HuntsConfig.config.soloHardPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) })
+                    .append(Text.literal("${HuntsConfig.settings.soloHardPoints} points").setStyle(Style.EMPTY.withItalic(false)).styled { it.withColor(Formatting.GREEN) })
             ),
             textureValue = LeaderboardTextures.INFO
         )

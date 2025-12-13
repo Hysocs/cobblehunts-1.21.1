@@ -1,10 +1,6 @@
 package com.cobblehunts.gui.huntsgui
 
 import com.cobblehunts.CobbleHunts
-import com.cobblehunts.gui.huntsgui.HuntsGlobalGui
-import com.cobblehunts.gui.huntsgui.HuntsGuiUtils
-import com.cobblehunts.gui.huntsgui.HuntsLeaderboard
-import com.cobblehunts.gui.huntsgui.HuntsSoloGui
 import com.cobblehunts.utils.HuntsConfig
 import com.everlastingutils.gui.CustomGui
 import com.everlastingutils.gui.InteractionContext
@@ -33,7 +29,6 @@ object HuntsGui {
     val dynamicGuiData = mutableMapOf<ServerPlayerEntity, Pair<String, MutableList<ItemStack>>>()
     private var mainHuntMapping: Map<Int, String> = emptyMap()
 
-    // Loot pool state
     private val playerLootDifficulties = mutableMapOf<ServerPlayerEntity, String>()
     private val playerLootPages = mutableMapOf<ServerPlayerEntity, Int>()
 
@@ -57,8 +52,8 @@ object HuntsGui {
 
     private fun generateMainLayout(): List<ItemStack> {
         val layout = MutableList(27) { HuntsGuiUtils.createFillerPane() }
-        val globalEnabled = HuntsConfig.config.globalHuntsEnabled
-        val soloEnabled = HuntsConfig.config.soloHuntsEnabled
+        val globalEnabled = HuntsConfig.settings.globalHuntsEnabled
+        val soloEnabled = HuntsConfig.settings.soloHuntsEnabled
         val mapping = mutableMapOf<Int, String>()
 
         if (globalEnabled && soloEnabled) {
@@ -111,7 +106,7 @@ object HuntsGui {
             mapping[13] = "solo"
         }
 
-        if (HuntsConfig.config.enableLeaderboard) {
+        if (HuntsConfig.settings.enableLeaderboard) {
             layout[MainSlots.LEADERBOARD] = CustomGui.createPlayerHeadButton(
                 textureName = "Leaderboard",
                 title = Text.literal("Leaderboard")
@@ -149,31 +144,41 @@ object HuntsGui {
             }
             return
         }
-        if (slot == MainSlots.LEADERBOARD && HuntsConfig.config.enableLeaderboard) {
+        if (slot == MainSlots.LEADERBOARD && HuntsConfig.settings.enableLeaderboard) {
             HuntsLeaderboard.openLeaderboardGui(player)
         }
     }
 
     fun refreshDynamicGuis() {
-        dynamicGuiData.forEach { (player, pair) ->
-            val (guiType, layout) = pair
-            when (guiType) {
-                "global" -> {
-                    // Calculate isExtended flag from config
-                    val isExtended = HuntsConfig.config.activeGlobalHuntsAtOnce > 7
-                    HuntsGlobalGui.updateGlobalDynamicItems(player, layout, isExtended)
-                }
-                "solo" -> {
-                    HuntsSoloGui.checkExpiredHunts(player)
-                    CobbleHunts.refreshPreviewPokemon(player)
-                    HuntsSoloGui.updateSoloDynamicItems(player, layout)
-                }
+        // Create a copy (.toList()) so if a player is removed during the loop, it doesn't crash
+        dynamicGuiData.toList().forEach { (player, pair) ->
+
+            // Double check the player is still online/valid before working
+            if (player.isDisconnected || player.isRemoved) {
+                dynamicGuiData.remove(player)
+                return@forEach
             }
-            CustomGui.refreshGui(player, layout)
+
+            val (guiType, layout) = pair
+            try {
+                when (guiType) {
+                    "global" -> {
+                        val isExtended = layout.size > 27
+                        HuntsGlobalGui.updateGlobalDynamicItems(player, layout, isExtended)
+                    }
+                    "solo" -> {
+                        CobbleHunts.refreshPreviewPokemon(player)
+                        HuntsSoloGui.updateSoloDynamicItems(player, layout)
+                    }
+                }
+                CustomGui.refreshGui(player, layout)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                dynamicGuiData.remove(player)
+            }
         }
     }
 
-    // Loot Pool Functions
     fun openLootPoolViewGui(player: ServerPlayerEntity, difficulty: String) {
         playerLootDifficulties[player] = difficulty
         playerLootPages[player] = 0
@@ -191,11 +196,11 @@ object HuntsGui {
     private fun generateLootLayout(player: ServerPlayerEntity, difficulty: String, page: Int): List<ItemStack> {
         val layout = MutableList(27) { HuntsGuiUtils.createFillerPane() }
         val lootList = when (difficulty) {
-            "global" -> HuntsConfig.config.globalLoot
-            "easy" -> HuntsConfig.config.soloEasyLoot
-            "normal" -> HuntsConfig.config.soloNormalLoot
-            "medium" -> HuntsConfig.config.soloMediumLoot
-            "hard" -> HuntsConfig.config.soloHardLoot
+            "global" -> HuntsConfig.lootPools.globalLoot
+            "easy" -> HuntsConfig.lootPools.soloEasyLoot
+            "normal" -> HuntsConfig.lootPools.soloNormalLoot
+            "medium" -> HuntsConfig.lootPools.soloMediumLoot
+            "hard" -> HuntsConfig.lootPools.soloHardLoot
             else -> emptyList()
         }
         val registryOps = RegistryOps.of(JsonOps.INSTANCE, player.server.registryManager)
@@ -260,11 +265,11 @@ object HuntsGui {
             }
             26 -> {
                 val lootList = when (difficulty) {
-                    "global" -> HuntsConfig.config.globalLoot
-                    "easy" -> HuntsConfig.config.soloEasyLoot
-                    "normal" -> HuntsConfig.config.soloNormalLoot
-                    "medium" -> HuntsConfig.config.soloMediumLoot
-                    "hard" -> HuntsConfig.config.soloHardLoot
+                    "global" -> HuntsConfig.lootPools.globalLoot
+                    "easy" -> HuntsConfig.lootPools.soloEasyLoot
+                    "normal" -> HuntsConfig.lootPools.soloNormalLoot
+                    "medium" -> HuntsConfig.lootPools.soloMediumLoot
+                    "hard" -> HuntsConfig.lootPools.soloHardLoot
                     else -> emptyList()
                 }
                 if ((page + 1) * 18 < lootList.size) {

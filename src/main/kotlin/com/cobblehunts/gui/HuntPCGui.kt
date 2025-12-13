@@ -72,7 +72,7 @@ object HuntPCGui {
 
                 if (activeHunt != null) {
                     reasons.addAll(TurnInGui.getAttributeMismatchReasons(pokemon, activeHunt))
-                    if (HuntsConfig.config.onlyAllowTurnInIfCapturedAfterHuntStarted) {
+                    if (HuntsConfig.settings.onlyAllowTurnInIfCapturedAfterHuntStarted) {
                         val captureTime = CatchingTracker.getCaptureTime(pokemon.uuid)
                         if (captureTime == null || captureTime < huntStartTime) {
                             reasons.add("Captured before hunt started")
@@ -161,7 +161,7 @@ object HuntPCGui {
                     if (pokemon != null && activeHunt != null) {
                         val reasons = TurnInGui.getAttributeMismatchReasons(pokemon, activeHunt).toMutableList()
 
-                        if (HuntsConfig.config.onlyAllowTurnInIfCapturedAfterHuntStarted) {
+                        if (HuntsConfig.settings.onlyAllowTurnInIfCapturedAfterHuntStarted) {
                             val captureTime = CatchingTracker.getCaptureTime(pokemon.uuid)
                             if (captureTime == null || captureTime < (activeHunt.startTime ?: 0L)) {
                                 reasons.add("Time")
