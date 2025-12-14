@@ -149,8 +149,7 @@ object HuntsCommands {
                     )
                     brushStack.set(DataComponentTypes.LORE, LoreComponent(loreTexts))
 
-                    // --- MODIFIED DATA SECTION ---
-                    // Create an NBT compound and add our custom tags
+
                     val nbt = NbtCompound()
                     nbt.putBoolean("cobblehunts:is_scanner", true)
                     nbt.putLong("cobblehunts:last_used", 0L)
@@ -171,7 +170,6 @@ object HuntsCommands {
         manager.register()
     }
 
-    // ... (The rest of the file remains unchanged)
 
     private fun executeMainCommand(context: CommandContext<ServerCommandSource>): Int {
         val source = context.source
