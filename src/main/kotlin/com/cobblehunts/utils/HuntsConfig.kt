@@ -22,7 +22,7 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
 // --- Data Classes for Configuration ---
-// (No changes to data classes)
+
 data class HuntsConfigData(
     override val version: String = "1.1.1",
     override val configId: String = "cobblehunts",
@@ -195,10 +195,7 @@ object HuntsConfig {
         }
     }
 
-    /**
-     * FIX: Renamed back to saveConfig and saves all config files to disk.
-     * This ensures other parts of the code can call it without error and all data is persisted.
-     */
+
     fun saveConfig() {
         if (!::configManager.isInitialized) return
         runBlocking {
@@ -225,7 +222,7 @@ object HuntsConfig {
         runBlocking { configManager.reloadConfig() }
     }
 
-    // --- (getPokemonList, getLootList, migration, and default data remain unchanged) ---
+
     fun getPokemonList(type: String, tier: String): MutableList<HuntPokemonEntry> {
         return when (type) {
             "global" -> pokemonPools.globalPokemon
@@ -384,8 +381,7 @@ object HuntsConfig {
     private val defaultSoloHardLoot = listOf<LootReward>(CommandReward(command = "eco deposit 50 dollars %player%", chance = 1.0, serializableItemStack = SerializableItemStack("{\"id\":\"minecraft:paper\",\"count\":1,\"components\":{\"minecraft:custom_name\":\"\\\"§aMoney Reward: $50\\\"\",\"minecraft:lore\":[\"\\\"You will receive 50 money.\\\"\"]}}")))
 }
 
-// --- Utility Functions & Classes ---
-// (No changes here)
+
 private val GSON = Gson()
 fun serializeItemStack(itemStack: ItemStack, ops: DynamicOps<JsonElement>): String {
     val result = ItemStack.CODEC.encodeStart(ops, itemStack)
