@@ -136,42 +136,24 @@ object HuntsCommands {
                 })
             }
             // New subcommand to give the Hunt Scanner Brush.
-            subcommand("givescanner", permission = HuntsConfig.settings.permissions.scannerPermission) {
-                executes { context ->
-                    val player = context.source.playerOrThrow
-                    val brushStack = ItemStack(Items.BRUSH)
+// Inside registerCommands()
 
-                    // Add a custom name and lore
-                    brushStack.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§bHunt Scanner Brush"))
-                    val loreTexts = listOf(
-                        Text.literal("§7Use on a block to scan for"),
-                        Text.literal("§7nearby hunt Pokémon.")
-                    )
-                    brushStack.set(DataComponentTypes.LORE, LoreComponent(loreTexts))
+            subcommand("givetrackingbrush", permission = HuntsConfig.settings.permissions.giveBrushPermission) {
+                // 1. Default execution (no argument provided) -> Gives 1
+                executes { context -> executeGiveBrush(context, 1) }
 
-                    // --- MODIFIED DATA SECTION ---
-                    // Create an NBT compound and add our custom tags
-                    val nbt = NbtCompound()
-                    nbt.putBoolean("cobblehunts:is_scanner", true)
-                    nbt.putLong("cobblehunts:last_used", 0L)
-
-                    // Set the compound into the vanilla CUSTOM_DATA component
-                    brushStack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt))
-                    // --- END OF MODIFICATION ---
-
-                    if (!player.inventory.insertStack(brushStack)) {
-                        player.dropItem(brushStack, false)
+                // 2. Execution with 'amount' argument -> Gives specified amount
+                then(RequiredArgumentBuilder.argument<ServerCommandSource, Int>("amount", IntegerArgumentType.integer(1, 64)).apply {
+                    executes { context ->
+                        val amount = IntegerArgumentType.getInteger(context, "amount")
+                        executeGiveBrush(context, amount)
                     }
-
-                    context.source.sendFeedback({ Text.literal("Gave a Hunt Scanner Brush to ${player.name.string}.") }, false)
-                    1
-                }
+                })
             }
         }
         manager.register()
     }
 
-    // ... (The rest of the file remains unchanged)
 
     private fun executeMainCommand(context: CommandContext<ServerCommandSource>): Int {
         val source = context.source
@@ -368,6 +350,42 @@ object HuntsCommands {
         party.add(pokemon)
         removedList.remove(pokemon)
         source.sendMessage(Text.literal("Reverted turn-in: Returned ${pokemon.species.name} to ${targetPlayer.name.string}'s party."))
+        return 1
+    }
+
+    private fun executeGiveBrush(context: CommandContext<ServerCommandSource>, amount: Int): Int {
+        val player = context.source.playerOrThrow
+
+        // Create stack with the specific amount
+        val brushStack = ItemStack(Items.BRUSH, amount)
+
+        // Add a custom name and lore
+        brushStack.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§bHunt Tracking Brush"))
+        val loreTexts = listOf(
+            Text.literal("§7Use on a block to dust for prints of"),
+            Text.literal("§7nearby hunt Pokémon.")
+        )
+        brushStack.set(DataComponentTypes.LORE, LoreComponent(loreTexts))
+
+        // Create an NBT compound and add our custom tags
+        val nbt = NbtCompound()
+        nbt.putBoolean("cobblehunts:is_scanner", true)
+        nbt.putLong("cobblehunts:last_used", 0L)
+
+        // Set the compound into the vanilla CUSTOM_DATA component
+        brushStack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(nbt))
+
+        // Give to player
+        // insertStack handles splitting stacks if the item (like a Brush) usually has a max stack of 1
+        if (!player.inventory.insertStack(brushStack)) {
+            // If inventory is full, drop the remaining count on the ground
+            player.dropItem(brushStack, false)
+        }
+
+        context.source.sendFeedback({
+            Text.literal("Gave $amount Hunt Scanner Brush(es) to ${player.name.string}.")
+        }, false)
+
         return 1
     }
 }

@@ -22,10 +22,12 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
 // --- Data Classes for Configuration ---
-// (No changes to data classes)
+
 data class HuntsConfigData(
-    override val version: String = "1.1.1",
+    // This version must match CURRENT_VERSION in the object below exactly
+    override val version: String = "1.1.4",
     override val configId: String = "cobblehunts",
+
     var debugEnabled: Boolean = false,
     var activeGlobalHuntsAtOnce: Int = 4,
     var soloEasyCooldown: Int = 120,
@@ -53,28 +55,44 @@ data class HuntsConfigData(
     var soloHuntCompletionMessage: String = "You received %reward%",
     var capturedPokemonMessage: String = "You caught a %pokemon% that matches an active hunt! Use /hunts to turn it in.",
     var autoAcceptSoloHunts: Boolean = false,
-    var permissions: HuntPermissions = HuntPermissions(),
     var enableLeaderboard: Boolean = true,
     var takeMonOnTurnIn: Boolean = true,
     var autoTurnInOnCapture: Boolean = false,
     var rewardMode: String = "weight",
     var onlyAllowTurnInIfCapturedAfterHuntStarted: Boolean = true,
     var lockGlobalHuntsOnCompletionForAllPlayers: Boolean = true,
-    var scannerDamageOnScan: Int = 1,        // Damage taken when starting a scan
-    var scannerDamageOnTrailStep: Int = 1,   // Damage taken when following a trail point
-    var scannerDamageOnTrailFinish: Int = 4  // Damage taken when finding the Pokémon
+
+    // Permissions
+    var permissions: HuntPermissions = HuntPermissions(),
+
+    // Tracking Brush Settings
+    var trackingBrush: TrackingBrushSettings = TrackingBrushSettings()
 ) : ConfigData
+
+data class TrackingBrushSettings(
+    var scanRadius: Double = 96.0,
+    var scanCooldownSeconds: Int = 30,
+    var trailStepDistance: Double = 16.0,
+    var trailStartDistance: Double = 6.0,
+    var trailTimeoutSeconds: Int = 60,
+    var damageOnScan: Int = 5,          // Base cost to scan
+    var damageOnFailedScan: Int = 2,    // Extra cost if nothing is found
+    var damageOnStep: Int = 1,
+    var damageOnFinish: Int = 4
+)
+
 data class HuntPermissions(
     var permissionLevel: Int = 2,
     var opLevel: Int = 2,
     var huntsPermission: String = "cobblehunts.hunts",
-    var scannerPermission: String = "cobblehunts.givescanner",
+    var giveBrushPermission: String = "cobblehunts.givebrush",
     var globalHuntPermission: String = "cobblehunts.global",
     var soloEasyHuntPermission: String = "cobblehunts.solo.easy",
     var soloNormalHuntPermission: String = "cobblehunts.solo.normal",
     var soloMediumHuntPermission: String = "cobblehunts.solo.medium",
     var soloHardHuntPermission: String = "cobblehunts.solo.hard"
 )
+
 data class HuntPokemonEntry(
     val species: String,
     val form: String?,
@@ -84,6 +102,7 @@ data class HuntPokemonEntry(
     var nature: String? = null,
     var ivRange: String? = null
 )
+
 data class PokemonPoolsConfig(
     override val version: String = "1.1.1",
     override val configId: String = "cobblehunts",
@@ -93,6 +112,7 @@ data class PokemonPoolsConfig(
     var soloMediumPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
     var soloHardPokemon: MutableList<HuntPokemonEntry> = mutableListOf(),
 ) : ConfigData
+
 @JsonAdapter(LootRewardAdapter::class)
 sealed class LootReward {
     abstract var chance: Double
@@ -106,6 +126,7 @@ data class CommandReward(
     override var chance: Double,
     var serializableItemStack: SerializableItemStack? = null
 ) : LootReward()
+
 data class SerializableItemStack(val itemStackString: String) {
     fun toItemStack(ops: DynamicOps<JsonElement>): ItemStack = deserializeItemStack(itemStackString, ops)
     companion object {
@@ -113,6 +134,7 @@ data class SerializableItemStack(val itemStackString: String) {
             SerializableItemStack(serializeItemStack(itemStack, ops))
     }
 }
+
 data class LootPoolsConfig(
     override val version: String = "1.1.0",
     override val configId: String = "cobblehunts",
@@ -129,7 +151,10 @@ object HuntsConfig {
     private const val POKEMON_POOLS_FILENAME = "pokemon_pools.jsonc"
     private const val LOOT_POOLS_FILENAME = "loot_pools.jsonc"
     private const val MAIN_CONFIG_ID = "cobblehunts"
-    private const val CURRENT_VERSION = "1.1.1"
+
+    // IMPORTANT: This must match the version in HuntsConfigData exactly
+    private const val CURRENT_VERSION = "1.1.4"
+
     private val configDir: Path = Paths.get("config", MAIN_CONFIG_ID)
 
     private lateinit var configManager: ConfigManager<HuntsConfigData>
@@ -149,6 +174,7 @@ object HuntsConfig {
         } else createDefaultLootPools()
 
     fun initializeAndLoad() {
+        // Run migration *strictly* before initializing config manager
         runMigrationIfNeeded()
 
         configManager = ConfigManager(
@@ -158,7 +184,7 @@ object HuntsConfig {
             metadata = ConfigMetadata(
                 headerComments = listOf(
                     "CobbleHunts Main Configuration",
-                    "This file contains general settings. Pokémon and Loot pools are now in separate files."
+                    "This file contains general settings."
                 ),
                 watcherSettings = WatcherSettings(enabled = true, autoSaveEnabled = true)
             )
@@ -184,28 +210,23 @@ object HuntsConfig {
                 )
             )
         }
-        if (settings.globalCooldown <= 0) {
-            settings.globalCooldown = 120
-        }
-        if (settings.globalTimeLimit <= 0) {
-            settings.globalTimeLimit = 300
-        }
-        if (settings.activeGlobalHuntsAtOnce <= 0) {
-            settings.activeGlobalHuntsAtOnce = 4
-        }
+
+        // --- Runtime Validation ---
+        if (settings.globalCooldown <= 0) settings.globalCooldown = 120
+        if (settings.globalTimeLimit <= 0) settings.globalTimeLimit = 300
+        if (settings.activeGlobalHuntsAtOnce <= 0) settings.activeGlobalHuntsAtOnce = 4
+
+        // Ensure brush settings are sane
+        if (settings.trackingBrush.scanRadius <= 0) settings.trackingBrush.scanRadius = 48.0
+        if (settings.trackingBrush.trailStepDistance <= 0) settings.trackingBrush.trailStepDistance = 16.0
+        if (settings.trackingBrush.trailStartDistance <= 0) settings.trackingBrush.trailStartDistance = 6.0
     }
 
-    /**
-     * FIX: Renamed back to saveConfig and saves all config files to disk.
-     * This ensures other parts of the code can call it without error and all data is persisted.
-     */
     fun saveConfig() {
         if (!::configManager.isInitialized) return
         runBlocking {
-            // Save main config using the manager
             configManager.saveConfig(settings)
 
-            // Manually save secondary configs as e-utils doesn't expose a public method for it.
             try {
                 val pokemonPoolFile = configDir.resolve(POKEMON_POOLS_FILENAME)
                 Files.createDirectories(pokemonPoolFile.parent)
@@ -225,7 +246,7 @@ object HuntsConfig {
         runBlocking { configManager.reloadConfig() }
     }
 
-    // --- (getPokemonList, getLootList, migration, and default data remain unchanged) ---
+    // --- (getPokemonList, getLootList remain unchanged) ---
     fun getPokemonList(type: String, tier: String): MutableList<HuntPokemonEntry> {
         return when (type) {
             "global" -> pokemonPools.globalPokemon
@@ -252,68 +273,123 @@ object HuntsConfig {
             else -> mutableListOf()
         }
     }
+
     private fun runMigrationIfNeeded() {
         val oldConfigFile = Paths.get("config", MAIN_CONFIG_ID, "config.jsonc")
         if (!oldConfigFile.exists()) return
 
         try {
             val content = oldConfigFile.readText()
-
             val reader = JsonReader(StringReader(content))
             reader.isLenient = true
             val jsonObject = JsonParser.parseReader(reader).asJsonObject
 
-            if (!jsonObject.has("globalPokemon")) {
-                return
+            var needsSave = false
+
+            // 1. CHECK FOR OLD POOL DATA
+            if (jsonObject.has("globalPokemon")) {
+                println("[CobbleHunts] Found legacy Pokemon pools in main config. Migrating to $POKEMON_POOLS_FILENAME...")
+
+                val backupFile = oldConfigFile.resolveSibling(oldConfigFile.fileName.toString() + ".backup_pools")
+                Files.copy(oldConfigFile, backupFile, StandardCopyOption.REPLACE_EXISTING)
+
+                val newPokemonPools = PokemonPoolsConfig(
+                    globalPokemon = extractList(jsonObject, "globalPokemon"),
+                    soloEasyPokemon = extractList(jsonObject, "soloEasyPokemon"),
+                    soloNormalPokemon = extractList(jsonObject, "soloNormalPokemon"),
+                    soloMediumPokemon = extractList(jsonObject, "soloMediumPokemon"),
+                    soloHardPokemon = extractList(jsonObject, "soloHardPokemon")
+                )
+                val newLootPools = LootPoolsConfig(
+                    globalLoot = extractList(jsonObject, "globalLoot"),
+                    soloEasyLoot = extractList(jsonObject, "soloEasyLoot"),
+                    soloNormalLoot = extractList(jsonObject, "soloNormalLoot"),
+                    soloMediumLoot = extractList(jsonObject, "soloMediumLoot"),
+                    soloHardLoot = extractList(jsonObject, "soloHardLoot")
+                )
+
+                val pokemonPoolFile = oldConfigFile.parent.resolve(POKEMON_POOLS_FILENAME)
+                pokemonPoolFile.writeText(gson.toJson(newPokemonPools))
+
+                val lootPoolFile = oldConfigFile.parent.resolve(LOOT_POOLS_FILENAME)
+                lootPoolFile.writeText(gson.toJson(newLootPools))
+
+                listOf(
+                    "globalPokemon", "soloEasyPokemon", "soloNormalPokemon", "soloMediumPokemon", "soloHardPokemon",
+                    "globalLoot", "soloEasyLoot", "soloNormalLoot", "soloMediumLoot", "soloHardLoot"
+                ).forEach { jsonObject.remove(it) }
+
+                needsSave = true
             }
 
-            println("[CobbleHunts] Old config file detected. Backing up before migration...")
-            val backupFile = oldConfigFile.resolveSibling(oldConfigFile.fileName.toString() + ".backup")
-            Files.copy(oldConfigFile, backupFile, StandardCopyOption.REPLACE_EXISTING)
-            println("[CobbleHunts] Backup created: ${backupFile.fileName}")
+            // 2. CHECK FOR OLD SCANNER SETTINGS
+            val brushObj = if (jsonObject.has("trackingBrush")) jsonObject.getAsJsonObject("trackingBrush") else JsonObject()
+            var brushUpdated = false
 
-            println("[CobbleHunts] Starting one-time migration...")
+            // Migrate root properties (v1.0 style)
+            if (jsonObject.has("scannerDamageOnScan")) {
+                brushObj.addProperty("damageOnScan", jsonObject.get("scannerDamageOnScan").asInt)
+                jsonObject.remove("scannerDamageOnScan")
+                brushUpdated = true
+            }
+            if (jsonObject.has("scannerDamageOnTrailStep")) {
+                brushObj.addProperty("damageOnStep", jsonObject.get("scannerDamageOnTrailStep").asInt)
+                jsonObject.remove("scannerDamageOnTrailStep")
+                brushUpdated = true
+            }
+            if (jsonObject.has("scannerDamageOnTrailFinish")) {
+                brushObj.addProperty("damageOnFinish", jsonObject.get("scannerDamageOnTrailFinish").asInt)
+                jsonObject.remove("scannerDamageOnTrailFinish")
+                brushUpdated = true
+            }
 
-            val newPokemonPools = PokemonPoolsConfig(
-                globalPokemon = extractList(jsonObject, "globalPokemon"),
-                soloEasyPokemon = extractList(jsonObject, "soloEasyPokemon"),
-                soloNormalPokemon = extractList(jsonObject, "soloNormalPokemon"),
-                soloMediumPokemon = extractList(jsonObject, "soloMediumPokemon"),
-                soloHardPokemon = extractList(jsonObject, "soloHardPokemon")
-            )
-            val newLootPools = LootPoolsConfig(
-                globalLoot = extractList(jsonObject, "globalLoot"),
-                soloEasyLoot = extractList(jsonObject, "soloEasyLoot"),
-                soloNormalLoot = extractList(jsonObject, "soloNormalLoot"),
-                soloMediumLoot = extractList(jsonObject, "soloMediumLoot"),
-                soloHardLoot = extractList(jsonObject, "soloHardLoot")
-            )
+            // Migrate old "scanner" object (v1.1.2 style)
+            if (jsonObject.has("scanner")) {
+                val oldScanner = jsonObject.getAsJsonObject("scanner")
+                if (oldScanner.has("damageOnScan")) brushObj.addProperty("damageOnScan", oldScanner.get("damageOnScan").asInt)
+                if (oldScanner.has("damageOnStep")) brushObj.addProperty("damageOnStep", oldScanner.get("damageOnStep").asInt)
+                if (oldScanner.has("damageOnFinish")) brushObj.addProperty("damageOnFinish", oldScanner.get("damageOnFinish").asInt)
+                if (oldScanner.has("scanRadius")) brushObj.addProperty("scanRadius", oldScanner.get("scanRadius").asDouble)
 
-            val pokemonPoolFile = oldConfigFile.parent.resolve(POKEMON_POOLS_FILENAME)
-            pokemonPoolFile.writeText(gson.toJson(newPokemonPools))
+                jsonObject.remove("scanner")
+                brushUpdated = true
+            }
 
-            val lootPoolFile = oldConfigFile.parent.resolve(LOOT_POOLS_FILENAME)
-            lootPoolFile.writeText(gson.toJson(newLootPools))
+            // Migrate Permission name
+            if (jsonObject.has("permissions")) {
+                val perms = jsonObject.getAsJsonObject("permissions")
+                if (perms.has("scannerPermission")) {
+                    perms.addProperty("giveBrushPermission", perms.get("scannerPermission").asString)
+                    perms.remove("scannerPermission")
+                    needsSave = true
+                }
+            }
 
-            listOf(
-                "globalPokemon", "soloEasyPokemon", "soloNormalPokemon", "soloMediumPokemon", "soloHardPokemon",
-                "globalLoot", "soloEasyLoot", "soloNormalLoot", "soloMediumLoot", "soloHardLoot"
-            ).forEach { jsonObject.remove(it) }
+            if (brushUpdated) {
+                println("[CobbleHunts] Migrating scanner settings to trackingBrush group...")
+                jsonObject.add("trackingBrush", brushObj)
+                needsSave = true
+            }
 
-            jsonObject.addProperty("version", CURRENT_VERSION)
-            oldConfigFile.writeText(gson.toJson(jsonObject))
-            println("[CobbleHunts] Migration successful! Pools have been moved to pokemon_pools.jsonc and loot_pools.jsonc.")
+            // 3. FINAL SAVE
+            if (needsSave) {
+                jsonObject.addProperty("version", CURRENT_VERSION)
+                oldConfigFile.writeText(gson.toJson(jsonObject))
+                println("[CobbleHunts] Structural migration successful. Version updated to $CURRENT_VERSION.")
+            }
 
         } catch (e: Exception) {
-            System.err.println("[CobbleHunts] CRITICAL ERROR during config migration. The process was halted. Please check your config file or restore from the '.backup' file if needed. Error: ${e.message}")
+            System.err.println("[CobbleHunts] CRITICAL ERROR during config migration. Error: ${e.message}")
             e.printStackTrace()
         }
     }
+
     private inline fun <reified T> extractList(json: JsonObject, key: String): MutableList<T> {
         if (!json.has(key)) return mutableListOf()
         val typeToken = object : com.google.gson.reflect.TypeToken<MutableList<T>>() {}.type
         return gson.fromJson(json.get(key), typeToken)
     }
+
     private fun createDefaultPokemonPools() = PokemonPoolsConfig(
         globalPokemon = defaultGlobalPokemon.toMutableList(),
         soloEasyPokemon = defaultSoloEasyPokemon.toMutableList(),
@@ -328,6 +404,8 @@ object HuntsConfig {
         soloMediumLoot = defaultSoloMediumLoot.toMutableList(),
         soloHardLoot = defaultSoloHardLoot.toMutableList()
     )
+
+    // --- Defaults (unchanged) ---
     private val defaultSoloEasyPokemon = listOf(
         HuntPokemonEntry(species = "pidgey", form = "Normal", aspects = emptySet(), chance = 1.0),
         HuntPokemonEntry(species = "rattata", form = "Normal", aspects = emptySet(), chance = 1.0),
@@ -385,7 +463,6 @@ object HuntsConfig {
 }
 
 // --- Utility Functions & Classes ---
-// (No changes here)
 private val GSON = Gson()
 fun serializeItemStack(itemStack: ItemStack, ops: DynamicOps<JsonElement>): String {
     val result = ItemStack.CODEC.encodeStart(ops, itemStack)
