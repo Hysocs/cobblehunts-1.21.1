@@ -359,7 +359,7 @@ object HuntsCommands {
         // Create stack with the specific amount
         val brushStack = ItemStack(Items.BRUSH, amount)
 
-        // Add a custom name and lore
+
         brushStack.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§bHunt Tracking Brush"))
         val loreTexts = listOf(
             Text.literal("§7Use on a block to dust for prints of"),

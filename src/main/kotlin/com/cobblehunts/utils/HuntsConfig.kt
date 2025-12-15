@@ -174,7 +174,7 @@ object HuntsConfig {
         } else createDefaultLootPools()
 
     fun initializeAndLoad() {
-        // Run migration *strictly* before initializing config manager
+
         runMigrationIfNeeded()
 
         configManager = ConfigManager(

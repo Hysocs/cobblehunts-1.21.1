@@ -29,7 +29,6 @@ public class ItemMixin {
                 HitResult hit = player.raycast(5.0, 0.0f, false);
                 if (hit.getType() == HitResult.Type.BLOCK) {
                     BlockPos pos = ((BlockHitResult) hit).getBlockPos();
-
                     world.setBlockBreakingInfo(-user.getId(), pos, -1);
                 }
             }

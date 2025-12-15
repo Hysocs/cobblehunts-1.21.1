@@ -194,7 +194,7 @@ public abstract class BrushItemMixin {
             TrailManager.INSTANCE.startTrail(player, pos, foundEntity, name);
             world.playSound(null, pos, SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.PLAYERS, 1.0f, 1.0f);
         } else {
-            // Nothing found
+
             player.sendMessage(Text.literal("§7No matching hunt Pokémon footprints found nearby."), true);
             world.playSound(null, pos, SoundEvents.BLOCK_REDSTONE_TORCH_BURNOUT, SoundCategory.PLAYERS, 0.5f, 1.0f);
 
